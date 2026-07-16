@@ -41,13 +41,14 @@ COMMANDS
 Run "contix <command> -h" for command-specific flags.
 
 QUICK START
-  # First machine
+  # First machine — the remote may be SSH or HTTPS:
   contix init --remote git@github.com:you/dev-state.git
+  #   or: contix init --remote https://github.com/you/dev-state.git
   contix repos add ~/code/project-a ~/code/project-b
   contix push
 
   # New machine
-  contix init --remote git@github.com:you/dev-state.git
+  contix init --remote https://github.com/you/dev-state.git
   contix pull
 `
 
@@ -131,6 +132,9 @@ func cmdInit(args []string) int {
 		cfg.RepoPath = abs
 	}
 	if *remote != "" {
+		if err := gitutil.ValidateRemote(*remote); err != nil {
+			return fail(err)
+		}
 		cfg.Remote = *remote
 	}
 	if *branch != "" {
@@ -153,6 +157,9 @@ func cmdInit(args []string) int {
 	fmt.Printf("  config    : %s\n\n", config.Path())
 	if cfg.Remote == "" {
 		fmt.Println("No remote set. Add one later with: contix init --remote <url>")
+	} else if gitutil.ClassifyRemote(cfg.Remote) == gitutil.RemoteHTTP {
+		fmt.Println("Using an HTTPS remote: pushing needs a git credential helper or a")
+		fmt.Println("Personal Access Token. SSH remotes (git@github.com:…) use your SSH key.")
 	}
 	fmt.Println("Next: 'contix repos add <path>' to track projects, then 'contix push'.")
 	fmt.Println("On a new machine after init: 'contix pull' to restore everything.")

@@ -90,6 +90,10 @@ contix push                                           # collect + commit locally
 contix push --push                                    # ...and upload to GitHub
 ```
 
+The remote may be **SSH** (`git@github.com:you/dev-state.git`) or **HTTPS**
+(`https://github.com/you/dev-state.git`). SSH uses your existing SSH key; HTTPS
+uses your git credential helper or a Personal Access Token.
+
 Tip: `contix init --remote <url> --auto-push` uploads automatically on every push.
 
 ### 2. New machine
