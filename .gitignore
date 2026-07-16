@@ -1,0 +1,12 @@
+# build artifacts
+/contix
+/contix.exe
+/dist/
+
+# editor / OS cruft
+.DS_Store
+*.swp
+
+.claude/
+.codex/
+.claude-*
