@@ -37,9 +37,12 @@ endif
 PREBUILT := $(DIST)/contix-$(OS)-$(ARCH)$(EXT)
 
 # Install location (no Go required). Override with PREFIX=/usr/local etc.
+# Use /usr/local/bin only when it is writable without sudo; otherwise fall
+# back to ~/.local/bin.
+USR_LOCAL_WRITABLE := $(shell [ -w /usr/local/bin ] && echo yes)
 ifeq ($(OS),windows)
   BINDIR ?= $(LOCALAPPDATA)/contix/bin
-else ifneq (,$(wildcard /usr/local/bin/.))
+else ifeq ($(USR_LOCAL_WRITABLE),yes)
   BINDIR ?= /usr/local/bin
 else
   BINDIR ?= $(HOME)/.local/bin
