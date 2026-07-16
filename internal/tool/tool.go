@@ -18,10 +18,8 @@ type Tool struct {
 	Name string
 	// Home returns the absolute state directory for this tool on this machine.
 	Home func() string
-	// Include lists path patterns (relative to Home) that should be synced.
-	Include []string
-	// Exclude lists path patterns that must never be synced. Exclude wins
-	// over Include.
+	// Exclude lists path patterns that must never be synced. Everything under
+	// Home that does not match an Exclude pattern is synced.
 	Exclude []string
 	// Version detects the installed tool version from its state dir. Returns
 	// "" when unknown.
@@ -51,41 +49,17 @@ func codex() Tool {
 	return Tool{
 		Name: "codex",
 		Home: platform.CodexHome,
-		Include: []string{
-			"config.toml",
-			"*.config.toml", // openai-api / openrouter / gemini provider configs
-			"AGENTS.md",
-			"version.json",
-			"history.jsonl",
-			"session_index.jsonl",
-			"rules/",
-			"skills/",
-			"memories/",
-			"sessions/",
-			"archived_sessions/",
-			"attachments/",
-			// SQLite memory/state stores (small, high value). Logs are excluded below.
-			"memories_1.sqlite",
-			"goals_1.sqlite",
-			"state_5.sqlite",
-			"*.sqlite-wal", // keep WAL so DBs restore consistently
-		},
+		// Sync everything under the Codex home except the items below.
 		Exclude: []string{
-			"auth.json",         // machine-locked credentials — never sync
-			".credentials.json", //
-			"logs_2.sqlite",     // 300MB+ telemetry log, regenerates
-			"logs_*.sqlite",     //
-			"*.sqlite-shm",      // shared-memory sidecar, rebuilt on open
-			"cache/",            // re-fetchable
-			"models_cache.json", //
-			"shell_snapshots/",  // machine-specific
-			"log/",              //
-			"tmp/",              //
-			".tmp/",             //
-			"plugins/",          // re-installable; contains nested .git
-			"vendor_imports/",   //
-			"installation_id",   // machine identity
-			".git",              //
+			// Machine-locked credentials — never sync (security).
+			"auth.json",
+			".credentials.json",
+			// 300MB+ telemetry log that regenerates on its own.
+			"logs_*.sqlite",
+			// SQLite shared-memory sidecar; rebuilt on open, unsafe to copy.
+			"*.sqlite-shm",
+			// Nested git repos would corrupt the sync repo if embedded.
+			".git",
 		},
 		Version: func(home string) string {
 			// version.json: {"version":"x.y.z", ...}
@@ -108,31 +82,14 @@ func claude() Tool {
 	return Tool{
 		Name: "claude",
 		Home: platform.ClaudeHome,
-		Include: []string{
-			"CLAUDE.md",
-			"settings.json",
-			".claude.json", // project registry (paths rewritten on restore)
-			"history.jsonl",
-			"projects/", // per-project session transcripts + memory
-			"skills/",
-			"rules/",
-			// plugin *config* only — not the marketplace repos
-			"plugins/config.json",
-			"plugins/installed_plugins.json",
-			"plugins/known_marketplaces.json",
-			"plugins/blocklist.json",
-		},
+		// Sync everything under the Claude home except the items below.
 		Exclude: []string{
-			".credentials.json", // machine-locked credentials — never sync
-			"cache/",
-			"downloads/",
-			"backups/",
-			"ide/",
-			"plugins/marketplaces/", // large re-fetchable repos
-			"plugins/repos/",
-			".last-cleanup",
-			"*.bak",
-			"settings.json.bak-*",
+			// Machine-locked credentials — never sync (security).
+			".credentials.json",
+			// SQLite shared-memory sidecar; rebuilt on open, unsafe to copy.
+			"*.sqlite-shm",
+			// Nested git repos (e.g. plugin marketplaces) would corrupt the
+			// sync repo if embedded.
 			".git",
 		},
 		Version: func(home string) string {
@@ -143,8 +100,9 @@ func claude() Tool {
 }
 
 // IncludedFiles walks the tool's home directory and returns the relative
-// (forward-slash) paths of all regular files that pass the include/exclude
-// filters. Symlinks are skipped for safety.
+// (forward-slash) paths of all regular files that are not excluded. Everything
+// under Home is synced except paths matching an Exclude pattern. Symlinks are
+// skipped for safety.
 func (t Tool) IncludedFiles() ([]string, error) {
 	home := t.Home()
 	info, err := os.Stat(home)
@@ -177,9 +135,7 @@ func (t Tool) IncludedFiles() ([]string, error) {
 		if matchAny(rel, t.Exclude) {
 			return nil
 		}
-		if matchAny(rel, t.Include) {
-			out = append(out, rel)
-		}
+		out = append(out, rel)
 		return nil
 	})
 	return out, err

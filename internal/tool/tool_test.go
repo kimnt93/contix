@@ -28,13 +28,16 @@ func TestMatch(t *testing.T) {
 	}
 }
 
-func TestExcludeWinsOverInclude(t *testing.T) {
-	tl := codex()
-	// auth.json is excluded even though it lives directly in home.
-	if matchAny("auth.json", tl.Include) && !matchAny("auth.json", tl.Exclude) {
-		t.Fatal("auth.json should be excluded")
+func TestCredentialsAlwaysExcluded(t *testing.T) {
+	// Credentials must never be synced, even under the sync-all model.
+	if !matchAny("auth.json", codex().Exclude) {
+		t.Fatal("codex auth.json must match an exclude pattern")
 	}
-	if !matchAny("auth.json", tl.Exclude) {
-		t.Fatal("auth.json must match an exclude pattern")
+	if !matchAny(".credentials.json", claude().Exclude) {
+		t.Fatal("claude .credentials.json must match an exclude pattern")
+	}
+	// Nested git repos must be pruned to avoid corrupting the sync repo.
+	if !matchAny(".git", codex().Exclude) {
+		t.Fatal("nested .git must match an exclude pattern")
 	}
 }

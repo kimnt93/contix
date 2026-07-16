@@ -151,40 +151,36 @@ Environment overrides for tool locations:
 
 ## What gets synced (and skipped)
 
-Matching rules (relative to each tool's home):
+`contix` syncs **everything** under each tool's home directory, except for a
+small set of items that are unsafe or pointless to sync. Matching rules for the
+exclude patterns (relative to each tool's home):
 
 - `dir/` — the directory and everything under it
 - `*.ext` — glob on the file's basename
 - `name` — any path segment equal to `name`
 - `a/b/c` — an exact path or a prefix directory
 
-**Exclude always wins over include.**
-
 ### Codex (`~/.codex`)
 
-Included: `config.toml`, `*.config.toml` provider configs, `AGENTS.md`,
-`version.json`, `history.jsonl`, `session_index.jsonl`, `rules/`, `skills/`,
-`memories/`, `sessions/`, `archived_sessions/`, `attachments/`, and the small
-`memories_*.sqlite` / `goals_*.sqlite` / `state_*.sqlite` stores (with their
-`-wal` sidecars).
+Everything is synced **except**:
 
-Excluded: `auth.json`, `.credentials.json`, `logs_*.sqlite` (large telemetry),
-`*.sqlite-shm`, `cache/`, `models_cache.json`, `shell_snapshots/`, `log/`,
-`tmp/`, `plugins/`, `vendor_imports/`, `installation_id`, `.git`.
+- `auth.json`, `.credentials.json` — machine-locked credentials (never synced)
+- `logs_*.sqlite` — large (300MB+) telemetry log that regenerates on its own
+- `*.sqlite-shm` — SQLite shared-memory sidecar, rebuilt on open
+- `.git` — nested git repos, which would corrupt the sync repo if embedded
 
 ### Claude Code (`~/.claude`)
 
-Included: `CLAUDE.md`, `settings.json`, `.claude.json` (project registry),
-`history.jsonl`, `projects/` (per-project transcripts), `skills/`, `rules/`,
-and plugin *config* files (`plugins/config.json`, `installed_plugins.json`,
-`known_marketplaces.json`, `blocklist.json`).
+Everything is synced **except**:
 
-Excluded: `.credentials.json`, `cache/`, `downloads/`, `backups/`, `ide/`,
-`plugins/marketplaces/`, `plugins/repos/`, `.last-cleanup`, `*.bak`, `.git`.
+- `.credentials.json` — machine-locked credentials (never synced)
+- `*.sqlite-shm` — SQLite shared-memory sidecar, rebuilt on open
+- `.git` — nested git repos (e.g. plugin marketplaces), which would corrupt the
+  sync repo if embedded
 
 > To trim large bundles, use `--days N` so old session transcripts under
-> `sessions/`, `archived_sessions/` and `projects/` are dropped. Config,
-> memory, rules and skills are always kept regardless of age.
+> `sessions/`, `archived_sessions/` and `projects/` are dropped. Everything else
+> is kept regardless of age.
 
 ---
 

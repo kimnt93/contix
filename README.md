@@ -12,6 +12,9 @@ back and pick up exactly where you left off.
 It is a single, dependency-free binary written in Go (1.26). It shells out to
 your existing `git`, so it reuses your SSH keys, credentials and identity.
 
+> **The name** — *contix* blends **cont**ext and **-x** (sync/exchange): it keeps
+> the working *context* of your AI agents and repos in sync across machines.
+
 ```
   Machine A                    GitHub                    Machine B
   ┌──────────────┐                                     ┌──────────────┐
@@ -30,9 +33,10 @@ carefully tuned settings, and the half-finished branches scattered across your
 projects. Existing dotfile/sync tools compress and upload files, but none
 understand multiple AI coding agents. `contix` does:
 
-- **Codex + Claude Code aware** — it knows which files are worth syncing
-  (memory, rules, skills, sessions, settings) and which to skip
-  (caches, logs, machine-locked credentials).
+- **Codex + Claude Code aware** — it syncs each tool's entire state directory
+  (memory, rules, skills, sessions, settings and more), skipping only what's
+  unsafe or pointless: machine-locked credentials, huge regenerating telemetry
+  logs, and nested `.git` repos.
 - **Git working state** — it records each tracked repo's remote, all local
   branches, the current branch, uncommitted changes, and untracked files, then
   reconstructs them on the other machine.
@@ -132,16 +136,20 @@ See [docs/usage.md](docs/usage.md) for the full reference and internals.
 
 ## What gets synced
 
-**Codex** (`~/.codex`, or `$CODEX_HOME`): `config.toml`, provider configs,
-`AGENTS.md`, history, rules, skills, memories, sessions, and small SQLite
-memory/state stores.
-**Skipped:** `auth.json`/credentials, telemetry logs, caches, shell snapshots,
-plugins.
+`contix` syncs the **entire** state directory of each tool, skipping only what's
+unsafe or pointless.
 
-**Claude Code** (`~/.claude`, or `$CLAUDE_CONFIG_DIR`): `CLAUDE.md`,
+**Codex** (`~/.codex`, or `$CODEX_HOME`): everything — `config.toml`, provider
+configs, `AGENTS.md`, history, rules, skills, memories, sessions, SQLite
+memory/state stores, caches, plugins, and more.
+**Skipped:** `auth.json`/`.credentials.json` (credentials), `logs_*.sqlite`
+(large regenerating telemetry), `*.sqlite-shm` sidecars, and nested `.git` dirs.
+
+**Claude Code** (`~/.claude`, or `$CLAUDE_CONFIG_DIR`): everything — `CLAUDE.md`,
 `settings.json`, project registry, `history.jsonl`, per-project transcripts,
-skills, rules, and plugin *config*.
-**Skipped:** `.credentials.json`, caches, downloads, backups, marketplace repos.
+skills, rules, plugins, downloads, backups, and more.
+**Skipped:** `.credentials.json` (credentials), `*.sqlite-shm` sidecars, and
+nested `.git` dirs (e.g. plugin marketplaces).
 
 **Git repos** you track with `contix repos add`: origin URL, all local branches,
 current branch, uncommitted tracked changes (as a patch), and untracked
