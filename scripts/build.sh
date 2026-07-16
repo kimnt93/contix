@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Cross-compile contix release binaries for Linux, macOS and Windows.
+# Cross-compile contix binaries for Linux, macOS and Windows.
 #
 #   ./scripts/build.sh [version]
 #
-# Output goes to ./dist/ with a SHA256SUMS checksum file.
+# Output goes to ./dist/ as stable-named raw binaries (no version in the
+# filename) so `make install` can pick the right one for the host platform
+# without rebuilding. A SHA256SUMS file is written alongside them.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -28,28 +30,14 @@ mkdir -p "$DIST"
 echo "Building contix ${VERSION}"
 for t in "${TARGETS[@]}"; do
   os="${t%/*}"; arch="${t#*/}"
-  out="contix-${VERSION}-${os}-${arch}"
-  bin="contix"
-  [ "$os" = "windows" ] && bin="contix.exe"
+  out="contix-${os}-${arch}"
+  [ "$os" = "windows" ] && out="${out}.exe"
 
-  workdir="${DIST}/${out}"
-  mkdir -p "$workdir"
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-    go build -trimpath -ldflags "$LDFLAGS" -o "${workdir}/${bin}" .
-  cp README.md "$workdir/" 2>/dev/null || true
-
-  # Archive: .zip for Windows, .tar.gz otherwise.
-  if [ "$os" = "windows" ]; then
-    (cd "$DIST" && zip -qr "${out}.zip" "$out")
-    archive="${out}.zip"
-  else
-    (cd "$DIST" && tar czf "${out}.tar.gz" "$out")
-    archive="${out}.tar.gz"
-  fi
-  rm -rf "$workdir"
-  echo "  ${archive}"
+    go build -trimpath -ldflags "$LDFLAGS" -o "${DIST}/${out}" .
+  echo "  ${out}"
 done
 
 # Checksums.
-(cd "$DIST" && sha256sum ./* > SHA256SUMS 2>/dev/null || shasum -a 256 ./* > SHA256SUMS)
-echo "Done. Artifacts in ${DIST}/"
+(cd "$DIST" && sha256sum ./contix-* > SHA256SUMS 2>/dev/null || shasum -a 256 ./contix-* > SHA256SUMS)
+echo "Done. Binaries in ${DIST}/"

@@ -262,7 +262,7 @@ contix push --push
 **New laptop setup**
 
 ```bash
-# install go + git + make first, then:
+# install git + make first (no Go needed — prebuilt binary), then:
 make install
 contix init --remote git@github.com:you/dev-state.git
 contix pull

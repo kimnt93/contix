@@ -45,25 +45,31 @@ understand multiple AI coding agents. `contix` does:
 
 ## Install
 
-### From source (recommended)
-
-Requires Go 1.26+, git, and `make`. Works the same on Linux, macOS and Windows.
-
-```bash
-git clone <this-repo> contix && cd contix
-make install      # builds and installs into $(go env GOPATH)/bin
-```
-
-Make sure `$(go env GOPATH)/bin` is on your `PATH`.
-
-### Prebuilt binaries
+Prebuilt binaries for every supported platform are committed under [`dist/`](dist/),
+so **you don't need Go to install** — just `make`, `git` and a shell.
 
 ```bash
-make release      # cross-compiles into ./dist for all platforms
+git clone https://github.com/kimnt93/contix.git && cd contix
+make install      # installs the prebuilt binary for your OS/arch
 ```
 
-Download the archive for your OS/arch from `dist/`, extract it, and put `contix`
-(`contix.exe` on Windows) somewhere on your `PATH`.
+`make install` auto-detects your platform (Linux/macOS/Windows, amd64/arm64),
+copies the matching binary from `dist/`, and installs it to a bin directory:
+
+- Linux/macOS: `/usr/local/bin` if writable, else `~/.local/bin`
+- Windows: `%LOCALAPPDATA%\contix\bin`
+
+Override the location with `make install PREFIX=/usr/local`. Make sure the
+target directory is on your `PATH`.
+
+### Building from source (optional)
+
+If you'd rather build yourself (requires Go 1.26+):
+
+```bash
+make build        # compile ./contix for the host platform
+make release      # cross-compile all platforms into ./dist and refresh binaries
+```
 
 ---
 
