@@ -66,6 +66,9 @@ whether the sync repo has uncommitted snapshots.
 
 Steps: collect each tool's portable files into `tarball + manifest`, remove any
 legacy working-repository snapshots, then run `git add -A && git commit` locally.
+Compressed bundles larger than 50 MiB are split into GitHub-safe parts. If a
+previous snapshot was never accepted by the remote, `collect` replaces/squashes
+that unpublished history so rejected large objects are no longer pushed.
 
 ### `contix push`
 
@@ -141,6 +144,11 @@ exclude patterns (relative to each tool's home):
 - `name` — any path segment equal to `name`
 - `a/b/c` — an exact path or a prefix directory
 
+Archives use gzip's maximum compression level. A compressed bundle larger than
+50 MiB is stored as ordered `bundle.tar.gz.part-NNN` files. `pull` and `verify`
+read those parts as one continuous archive; older single-file bundles remain
+compatible.
+
 ### Codex (`~/.codex`)
 
 Everything is synced **except**:
@@ -204,7 +212,8 @@ Add extra rules with `--map OLD=NEW` (repeatable), or disable rewriting with
 │   ├── bundle.tar.gz         # compressed Claude state
 │   └── manifest.json         # per-file SHA-256, tool version, source machine
 ├── codex/
-│   ├── bundle.tar.gz
+│   ├── bundle.tar.gz.part-000 # large bundles are split into 50 MiB parts
+│   ├── bundle.tar.gz.part-001
 │   └── manifest.json
 └── hermes/
 │   ├── bundle.tar.gz
@@ -258,6 +267,10 @@ contix push
 **Push rejected / non-fast-forward** — someone else (another machine) pushed
 first. `contix push` runs `git pull --rebase` before pushing; if a genuine
 conflict exists, resolve it in `repo_path` and push again.
+
+**GitHub reports a file larger than 100 MB** — upgrade contix, then run
+`contix collect` again followed by `contix push`. The new collection splits the
+archive and rewrites the unpublished rejected snapshot.
 
 **`version mismatch` on pull** — the tool version that produced the state differs
 from the one installed here. State usually still loads; update the tool to match

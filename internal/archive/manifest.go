@@ -22,16 +22,25 @@ type FileEntry struct {
 	SHA256 string `json:"sha256"` // hex digest of the file contents
 }
 
+// BundlePart records one compressed archive chunk. Large bundles are split so
+// every git object remains comfortably below hosting-provider file limits.
+type BundlePart struct {
+	Name   string `json:"name"`
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256"`
+}
+
 // Manifest describes the contents and provenance of one tool's bundle.
 type Manifest struct {
-	Schema      int         `json:"schema"`
-	Tool        string      `json:"tool"`
-	ToolVersion string      `json:"tool_version,omitempty"`
-	SourceOS    string      `json:"source_os"`   // linux | darwin | windows
-	SourceHome  string      `json:"source_home"` // absolute home dir at push time
-	SourceTool  string      `json:"source_tool"` // absolute tool dir at push time
-	CreatedAt   time.Time   `json:"created_at"`
-	Files       []FileEntry `json:"files"`
+	Schema      int          `json:"schema"`
+	Tool        string       `json:"tool"`
+	ToolVersion string       `json:"tool_version,omitempty"`
+	SourceOS    string       `json:"source_os"`   // linux | darwin | windows
+	SourceHome  string       `json:"source_home"` // absolute home dir at push time
+	SourceTool  string       `json:"source_tool"` // absolute tool dir at push time
+	CreatedAt   time.Time    `json:"created_at"`
+	Files       []FileEntry  `json:"files"`
+	BundleParts []BundlePart `json:"bundle_parts,omitempty"`
 }
 
 // ManifestName is the manifest filename stored alongside each bundle.

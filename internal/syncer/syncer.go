@@ -23,6 +23,7 @@ type PushResult struct {
 	Files   int
 	Bytes   int64
 	Version string
+	Parts   int
 	Skipped string // reason, if skipped
 }
 
@@ -86,6 +87,10 @@ func Push(cfg config.Config, t tool.Tool, days int) (PushResult, error) {
 	}
 	res.Files = len(m.Files)
 	res.Bytes = total
+	res.Parts = len(m.BundleParts)
+	if res.Parts == 0 {
+		res.Parts = 1
+	}
 	return res, nil
 }
 
@@ -95,7 +100,7 @@ func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrit
 	manifestPath := filepath.Join(toolDir(cfg, t.Name), archive.ManifestName)
 	bundlePath := filepath.Join(toolDir(cfg, t.Name), archive.BundleName)
 
-	if _, err := os.Stat(bundlePath); err != nil {
+	if !archive.Exists(bundlePath) {
 		res.Skipped = "nothing synced for this tool yet"
 		return res, nil
 	}

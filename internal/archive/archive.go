@@ -32,7 +32,10 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 	tmpBundle := f.Name()
 	defer os.Remove(tmpBundle)
 
-	gz := gzip.NewWriter(f)
+	gz, err := gzip.NewWriterLevel(f, gzip.BestCompression)
+	if err != nil {
+		return m, err
+	}
 	tw := tar.NewWriter(gz)
 
 	sort.Strings(rels)
@@ -78,17 +81,104 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 	if err := f.Close(); err != nil {
 		return m, err
 	}
-	if err := os.Rename(tmpBundle, bundlePath); err != nil {
-		// Windows cannot replace an existing file with Rename. The completed
-		// temp bundle is still safe to publish after removing the old one.
-		if removeErr := os.Remove(bundlePath); removeErr != nil && !os.IsNotExist(removeErr) {
-			return m, err
-		}
-		if err := os.Rename(tmpBundle, bundlePath); err != nil {
-			return m, err
-		}
+	m.BundleParts, err = publishBundle(tmpBundle, bundlePath)
+	if err != nil {
+		return m, err
 	}
 	return m, nil
+}
+
+// bundlePartSize is a variable so tests can exercise chunking without creating
+// huge fixtures. Production archives use 50 MiB chunks.
+var bundlePartSize int64 = 50 * 1024 * 1024
+
+func publishBundle(tmpBundle, bundlePath string) ([]BundlePart, error) {
+	info, err := os.Stat(tmpBundle)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() <= bundlePartSize {
+		if err := removeBundleOutputs(bundlePath); err != nil {
+			return nil, err
+		}
+		if err := os.Rename(tmpBundle, bundlePath); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	src, err := os.Open(tmpBundle)
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	type pendingPart struct {
+		tmp   string
+		final string
+		meta  BundlePart
+	}
+	var pending []pendingPart
+	defer func() {
+		for _, p := range pending {
+			if p.tmp != "" {
+				_ = os.Remove(p.tmp)
+			}
+		}
+	}()
+	for index, remaining := 0, info.Size(); remaining > 0; index++ {
+		size := min(remaining, bundlePartSize)
+		part, err := os.CreateTemp(filepath.Dir(bundlePath), ".bundle-part-*.tmp")
+		if err != nil {
+			return nil, err
+		}
+		h := sha256.New()
+		if _, err := io.CopyN(io.MultiWriter(part, h), src, size); err != nil {
+			part.Close()
+			return nil, err
+		}
+		if err := part.Sync(); err != nil {
+			part.Close()
+			return nil, err
+		}
+		if err := part.Close(); err != nil {
+			return nil, err
+		}
+		name := fmt.Sprintf("%s.part-%03d", filepath.Base(bundlePath), index)
+		pending = append(pending, pendingPart{
+			tmp:   part.Name(),
+			final: filepath.Join(filepath.Dir(bundlePath), name),
+			meta:  BundlePart{Name: name, Size: size, SHA256: hex.EncodeToString(h.Sum(nil))},
+		})
+		remaining -= size
+	}
+	if err := removeBundleOutputs(bundlePath); err != nil {
+		return nil, err
+	}
+	parts := make([]BundlePart, 0, len(pending))
+	for i := range pending {
+		if err := os.Rename(pending[i].tmp, pending[i].final); err != nil {
+			return nil, err
+		}
+		parts = append(parts, pending[i].meta)
+		pending[i].tmp = ""
+	}
+	return parts, nil
+}
+
+func removeBundleOutputs(bundlePath string) error {
+	if err := os.Remove(bundlePath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	parts, err := filepath.Glob(bundlePath + ".part-*")
+	if err != nil {
+		return err
+	}
+	for _, part := range parts {
+		if err := os.Remove(part); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func skippableSourceError(err error) bool {
@@ -152,7 +242,7 @@ func writeFile(tw *tar.Writer, src *os.File, rel string, info os.FileInfo) (stri
 // Extract unpacks a bundle into destRoot. It refuses entries that would escape
 // destRoot (zip-slip guard). Returns the list of extracted relative paths.
 func Extract(bundlePath, destRoot string) ([]string, error) {
-	f, err := os.Open(bundlePath)
+	f, err := openBundle(bundlePath)
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +291,60 @@ func Extract(bundlePath, destRoot string) ([]string, error) {
 		extracted = append(extracted, filepath.ToSlash(hdr.Name))
 	}
 	return extracted, nil
+}
+
+// Exists reports whether a single-file or chunked bundle exists.
+func Exists(bundlePath string) bool {
+	if _, err := os.Stat(bundlePath); err == nil {
+		return true
+	}
+	parts, _ := filepath.Glob(bundlePath + ".part-*")
+	return len(parts) > 0
+}
+
+type bundleReader struct {
+	files  []*os.File
+	reader io.Reader
+}
+
+func (r *bundleReader) Read(p []byte) (int, error) { return r.reader.Read(p) }
+func (r *bundleReader) Close() error {
+	var first error
+	for _, f := range r.files {
+		if err := f.Close(); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+func openBundle(bundlePath string) (io.ReadCloser, error) {
+	if f, err := os.Open(bundlePath); err == nil {
+		return f, nil
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	parts, err := filepath.Glob(bundlePath + ".part-*")
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(parts)
+	if len(parts) == 0 {
+		return nil, os.ErrNotExist
+	}
+	r := &bundleReader{}
+	var readers []io.Reader
+	for _, part := range parts {
+		f, err := os.Open(part)
+		if err != nil {
+			r.Close()
+			return nil, err
+		}
+		r.files = append(r.files, f)
+		readers = append(readers, f)
+	}
+	r.reader = io.MultiReader(readers...)
+	return r, nil
 }
 
 // Verify checks that every file listed in the manifest exists under root and

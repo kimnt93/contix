@@ -1,6 +1,7 @@
 package archive
 
 import (
+	"crypto/rand"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -43,6 +44,48 @@ func TestCreateExtractVerifyRoundTrip(t *testing.T) {
 	problems, _ = Verify(dest, m)
 	if len(problems) == 0 {
 		t.Fatal("expected verify to detect tampering")
+	}
+}
+
+func TestCreateSplitsAndExtractsLargeCompressedBundle(t *testing.T) {
+	oldPartSize := bundlePartSize
+	bundlePartSize = 1024
+	defer func() { bundlePartSize = oldPartSize }()
+
+	src := t.TempDir()
+	data := make([]byte, 8*1024)
+	if _, err := rand.Read(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "random.bin"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(t.TempDir(), BundleName)
+	m, err := Create(src, []string{"random.bin"}, bundle, NewManifest("test", "", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.BundleParts) < 2 {
+		t.Fatalf("want a chunked bundle, got %d parts", len(m.BundleParts))
+	}
+	if _, err := os.Stat(bundle); !os.IsNotExist(err) {
+		t.Fatalf("single bundle should not exist after chunking: %v", err)
+	}
+	for _, part := range m.BundleParts {
+		if part.Size > bundlePartSize {
+			t.Fatalf("part %s is too large: %d", part.Name, part.Size)
+		}
+	}
+	dest := t.TempDir()
+	if _, err := Extract(bundle, dest); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, "random.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(data) {
+		t.Fatal("chunked bundle did not round-trip")
 	}
 }
 

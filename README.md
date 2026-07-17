@@ -37,6 +37,8 @@ but none understand multiple AI coding agents. `contix` does:
   logs, and nested `.git` repos.
 - **One repo, latest wins** — everything lands in a single git repo that always
   holds the latest snapshot. No servers, no accounts, no lock-in.
+- **GitHub-size safe** — archives use maximum gzip compression and are split
+  into 50 MiB parts when necessary, staying below GitHub's per-file limit.
 - **Cross-platform & portable** — Linux, macOS, Windows. Paths embedded in
   session files are rewritten to the new machine's home directory automatically.
 
@@ -160,6 +162,10 @@ state database. Credentials (`auth.json`, `.env`), pairing data, caches, logs,
 sandbox state, runtime binaries and the installed `hermes-agent` source/venv are
 skipped.
 
+Each tool is stored as one recursive `tar.gz` stream. When its compressed size
+exceeds 50 MiB, contix writes `bundle.tar.gz.part-000`, `part-001`, and so on.
+`pull` and `verify` reassemble the parts automatically.
+
 ---
 
 ## Security notes
@@ -178,6 +184,10 @@ skipped.
 
 - `contix` syncs the **latest** snapshot. History lives in the git repo's commits,
   but `contix` itself always restores the most recent push.
+
+If GitHub previously rejected an oversized bundle, upgrade and run
+`contix collect` again. Contix rewrites unpublished snapshot history so the old
+oversized object is not included by the following `contix push`.
 
 ---
 

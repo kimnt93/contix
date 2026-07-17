@@ -66,7 +66,11 @@ func cmdCollect(args []string) int {
 			fmt.Printf("  %-8s skipped (%s)\n", t.Name, res.Skipped)
 			continue
 		}
-		fmt.Printf("  %-8s %d files, %s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version))
+		parts := ""
+		if res.Parts > 1 {
+			parts = fmt.Sprintf(", %d compressed parts", res.Parts)
+		}
+		fmt.Printf("  %-8s %d files, %s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts)
 	}
 
 	// Commit the collected snapshot locally.
@@ -76,14 +80,14 @@ func cmdCollect(args []string) int {
 		host, _ := os.Hostname()
 		msg = fmt.Sprintf("contix sync %s from %s", time.Now().Format("2006-01-02 15:04"), host)
 	}
-	committed, err := r.Commit(msg)
+	committed, err := r.CommitSnapshot(cfg.Branch, msg)
 	if err != nil {
 		return fail(err)
 	}
 	if committed {
 		fmt.Printf("\nCommitted: %s\n", msg)
 	} else {
-		fmt.Println("\nNothing changed since last push.")
+		fmt.Println("\nNothing changed since last collection.")
 	}
 
 	if cfg.Remote != "" {

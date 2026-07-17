@@ -1,1 +1,1 @@
-Uses separate collect, push and pull commands for Claude Code, Codex and Hermes state.
+Splits large compressed Claude Code, Codex and Hermes bundles for GitHub-compatible pushes.

@@ -129,6 +129,56 @@ func (r Repo) Commit(message string) (bool, error) {
 	return true, nil
 }
 
+// CommitSnapshot commits the current latest-only snapshot. If local snapshot
+// commits have never reached origin, they are replaced/squashed so rejected
+// large blobs do not remain in the history sent by the next push.
+func (r Repo) CommitSnapshot(branch, message string) (bool, error) {
+	clean, err := r.IsClean()
+	if err != nil {
+		return false, err
+	}
+	if clean {
+		return false, nil
+	}
+	if err := r.AddAll(); err != nil {
+		return false, err
+	}
+	if !r.HasCommits() {
+		_, err := r.run("commit", "-m", message)
+		return err == nil, err
+	}
+	remoteRef := "refs/remotes/origin/" + branch
+	if _, err := r.run("rev-parse", "--verify", "--quiet", remoteRef); err == nil {
+		// HEAD at or behind origin means there are no unpublished snapshot
+		// commits to rewrite; create a normal child commit.
+		if _, err := r.run("merge-base", "--is-ancestor", "HEAD", remoteRef); err == nil {
+			_, err := r.run("commit", "-m", message)
+			return err == nil, err
+		}
+		// Squash every unpublished snapshot on top of the last published state.
+		if _, err := r.run("reset", "--soft", remoteRef); err != nil {
+			return false, err
+		}
+		_, err := r.run("commit", "-m", message)
+		return err == nil, err
+	}
+
+	// An empty/unpublished remote has no base ref. Build a new root commit from
+	// the staged snapshot, making all previously rejected objects unreachable.
+	tree, err := r.run("write-tree")
+	if err != nil {
+		return false, err
+	}
+	commit, err := r.runInput([]byte(message+"\n"), "commit-tree", tree, "-F", "-")
+	if err != nil {
+		return false, err
+	}
+	if _, err := r.run("reset", "--soft", commit); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Pull fetches and rebases from origin on the given branch.
 func (r Repo) Pull(branch string) error {
 	if !r.HasRemote() {
