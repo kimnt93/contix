@@ -129,6 +129,7 @@ func hermes() Tool {
 			"image_cache/",
 			"sandboxes/",
 			"cron/output/",
+			"cron/ticker_heartbeat",
 			"*_cache.json",
 			"*.lock",
 			"*.sqlite-shm",
@@ -172,6 +173,10 @@ func (t Tool) IncludedFiles() ([]string, error) {
 			return nil
 		}
 		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		info, ierr := d.Info()
+		if ierr != nil || !info.Mode().IsRegular() {
 			return nil
 		}
 		if matchAny(rel, t.Exclude) {

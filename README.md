@@ -1,27 +1,25 @@
 # contix
 
-**Sync your AI coding agents and git working state across machines through one GitHub repo.**
+**Sync your AI coding agents across machines through one GitHub repo.**
 
 `contix` snapshots the state of [Codex](https://github.com/openai/codex),
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code), and Hermes Agent
-— their memory, settings, rules, skills and session history — together with the
-branches and uncommitted work in your git repositories, compresses it, and pushes it to a
-single git repo you own. On a new machine you run one command to pull it all
-back and pick up exactly where you left off.
+— their memory, settings, rules, skills and session history — compresses it,
+and pushes it to a single git repo you own. On a new machine you run one command
+to pull it all back and pick up exactly where you left off.
 
 It is a single, dependency-free binary written in Go (1.26). It shells out to
 your existing `git`, so it reuses your SSH keys, credentials and identity.
 
 > **The name** — *contix* blends **cont**ext and **-x** (sync/exchange): it keeps
-> the working *context* of your AI agents and repos in sync across machines.
+> the working *context* of your AI agents in sync across machines.
 
 ```
   Machine A                    GitHub                    Machine B
   ┌──────────────┐                                     ┌──────────────┐
   │ ~/.codex     │──┐        ┌───────────┐        ┌──▶ │ ~/.codex     │
   │ ~/.claude    │──┼─push──▶│ one repo  │──pull──┤    │ ~/.claude    │
-  │ ~/.hermes    │──┤        │ (latest)  │        ├──▶ │ ~/.hermes    │
-  │ ~/code/*     │──┘        │           │        └──▶ │ ~/code/*     │
+  │ ~/.hermes    │──┘        │ (latest)  │        └──▶ │ ~/.hermes    │
   └──────────────┘           └───────────┘             └──────────────┘
 ```
 
@@ -29,20 +27,14 @@ your existing `git`, so it reuses your SSH keys, credentials and identity.
 
 ## Why
 
-Moving to a new laptop means losing your agents' accumulated memory, your
-carefully tuned settings, and the half-finished branches scattered across your
-projects. Existing dotfile/sync tools compress and upload files, but none
-understand multiple AI coding agents. `contix` does:
+Moving to a new laptop means losing your agents' accumulated memory and your
+carefully tuned settings. Existing dotfile/sync tools compress and upload files,
+but none understand multiple AI coding agents. `contix` does:
 
 - **Codex + Claude Code + Hermes aware** — it syncs portable tool state
   (memory, rules, skills, sessions, settings and more), skipping only what's
   unsafe or pointless: machine-locked credentials, huge regenerating telemetry
   logs, and nested `.git` repos.
-- **Automatic git discovery** — every push scans configured roots (your home by
-  default), so newly created or cloned repositories are registered without a
-  manual setup step. It records each repo's remote, all local
-  branches, the current branch, uncommitted changes, and untracked files, then
-  reconstructs them on the other machine.
 - **One repo, latest wins** — everything lands in a single git repo that always
   holds the latest snapshot. No servers, no accounts, no lock-in.
 - **Cross-platform & portable** — Linux, macOS, Windows. Paths embedded in
@@ -89,7 +81,7 @@ Create an **empty, private** git repo on GitHub (e.g. `you/dev-state`), then:
 
 ```bash
 contix init --remote git@github.com:you/dev-state.git
-contix push          # auto-find repos, collect tool state, commit locally
+contix push          # collect tool state and commit locally
 contix push --push   # ...and upload to GitHub
 ```
 
@@ -108,9 +100,7 @@ contix init --remote git@github.com:you/dev-state.git   # clones existing state
 contix pull                                             # restores everything
 ```
 
-Your Codex/Claude/Hermes memory and settings are back, your projects are cloned
-to the same relative path under your home directory, their branches are
-recreated, and your uncommitted work is reapplied.
+Your Codex/Claude/Hermes memory and settings are back.
 
 ---
 
@@ -119,13 +109,11 @@ recreated, and your uncommitted work is reapplied.
 | Command | What it does |
 |---|---|
 | `contix init` | Configure the sync repo. Clones the remote if it already has data. |
-| `contix status` | Show config, what each tool would sync, and tracked repos. |
-| `contix push [--push]` | Collect state + repo snapshots, commit, and (with `--push`) upload. |
-| `contix pull` | Pull from the remote and restore state + repos onto this machine. |
+| `contix status` | Show config and what each tool would sync. |
+| `contix push [--push]` | Collect AI state, commit, and (with `--push`) upload. |
+| `contix pull` | Pull from the remote and restore AI state onto this machine. |
 | `contix list` | List what is currently stored in the sync repo. |
 | `contix verify` | Extract and checksum every bundle to confirm integrity. |
-| `contix repos scan [root]...` | Find and register git repositories immediately. |
-| `contix repos add/remove/list` | Manually manage tracked git repositories. |
 | `contix doctor` | Diagnose environment and configuration. |
 | `contix version` | Print the version. |
 
@@ -135,7 +123,6 @@ Common flags:
   days (memory, rules and skills are always kept). Keeps bundles small.
 - `contix push --tools codex` — sync only one tool.
 - `contix push --message "before reinstall"` — custom commit message.
-- `contix pull --no-repos` — restore only AI state, not git repos.
 - `contix pull --map /old/home=/new/home` — extra path rewrite rule.
 
 See [docs/usage.md](docs/usage.md) for the full reference and internals.
@@ -165,10 +152,6 @@ state database. Credentials (`auth.json`, `.env`), pairing data, caches, logs,
 sandbox state, runtime binaries and the installed `hermes-agent` source/venv are
 skipped.
 
-**Git repos** found automatically (or added with `contix repos add`): origin
-URL, all local branches, current branch, uncommitted tracked changes (as a
-patch), and untracked non-ignored files.
-
 ---
 
 ## Security notes
@@ -185,13 +168,6 @@ patch), and untracked non-ignored files.
 
 ## Limitations
 
-- A tracked repo **without an `origin` remote** can't have its commit history
-  restored on a new machine (there's nowhere to clone it from). `contix` warns
-  you at `repos add` time; only its uncommitted/untracked files are synced.
-- Uncommitted changes are stored as a `git diff` patch and reapplied with a
-  3-way merge. If the base commits diverge wildly the patch may not apply
-  cleanly; it is kept in the sync repo as `git/<repo>/changes.patch` so nothing
-  is lost.
 - `contix` syncs the **latest** snapshot. History lives in the git repo's commits,
   but `contix` itself always restores the most recent push.
 

@@ -46,4 +46,7 @@ func TestCredentialsAlwaysExcluded(t *testing.T) {
 	if !matchAny("hermes-agent/venv/bin/python", hermes().Exclude) {
 		t.Fatal("hermes installation tree must be excluded")
 	}
+	if !matchAny("cron/ticker_heartbeat", hermes().Exclude) {
+		t.Fatal("hermes runtime heartbeat must be excluded")
+	}
 }

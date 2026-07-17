@@ -1,5 +1,5 @@
-// Command contix syncs Codex, Claude Code, Hermes and git working state to a single
-// GitHub repo and restores it on another machine.
+// Command contix syncs Codex, Claude Code and Hermes state to a single GitHub
+// repo and restores it on another machine.
 package main
 
 import (

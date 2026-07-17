@@ -25,37 +25,6 @@ type Config struct {
 	// Home is this machine's home directory recorded at init time. Used as a
 	// hint; the live home is always re-resolved at runtime.
 	Home string `json:"home"`
-	// Repos are absolute paths to git working repositories whose branches and
-	// uncommitted work should be synced.
-	Repos []string `json:"repos,omitempty"`
-	// AutoDiscover scans RepoRoots on every push and registers newly cloned or
-	// created repositories automatically.
-	AutoDiscover bool `json:"auto_discover"`
-	// RepoRoots are directories searched recursively for git repositories.
-	RepoRoots []string `json:"repo_roots,omitempty"`
-}
-
-// AddRepo records an absolute repo path if not already tracked. Returns false
-// if it was already present.
-func (c *Config) AddRepo(abs string) bool {
-	for _, r := range c.Repos {
-		if r == abs {
-			return false
-		}
-	}
-	c.Repos = append(c.Repos, abs)
-	return true
-}
-
-// RemoveRepo drops a tracked repo path. Returns false if it was not tracked.
-func (c *Config) RemoveRepo(abs string) bool {
-	for i, r := range c.Repos {
-		if r == abs {
-			c.Repos = append(c.Repos[:i], c.Repos[i+1:]...)
-			return true
-		}
-	}
-	return false
 }
 
 // Path returns the config file location.
@@ -66,12 +35,10 @@ func Path() string {
 // Default returns a config populated with sensible defaults.
 func Default() Config {
 	return Config{
-		RepoPath:     filepath.Join(platform.ConfigDir(), "repo"),
-		Branch:       "main",
-		AutoPush:     false,
-		Home:         platform.Home(),
-		AutoDiscover: true,
-		RepoRoots:    []string{platform.Home()},
+		RepoPath: filepath.Join(platform.ConfigDir(), "repo"),
+		Branch:   "main",
+		AutoPush: false,
+		Home:     platform.Home(),
 	}
 }
 
@@ -93,16 +60,6 @@ func Load() (Config, error) {
 	}
 	if c.Branch == "" {
 		c.Branch = "main"
-	}
-	// Existing configs predate automatic discovery. Enable it during migration
-	// unless the field is explicitly present and false.
-	var fields map[string]json.RawMessage
-	_ = json.Unmarshal(b, &fields)
-	if _, ok := fields["auto_discover"]; !ok {
-		c.AutoDiscover = true
-	}
-	if len(c.RepoRoots) == 0 {
-		c.RepoRoots = []string{platform.Home()}
 	}
 	return c, nil
 }

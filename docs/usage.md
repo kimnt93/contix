@@ -9,11 +9,10 @@ This document is the full reference for `contix`. For a quick overview see the
 2. [Command reference](#command-reference)
 3. [Configuration](#configuration)
 4. [What gets synced (and skipped)](#what-gets-synced-and-skipped)
-5. [How git working repos are synced](#how-git-working-repos-are-synced)
-6. [Cross-machine path rewriting](#cross-machine-path-rewriting)
-7. [Layout of the sync repo](#layout-of-the-sync-repo)
-8. [Typical workflows](#typical-workflows)
-9. [Troubleshooting](#troubleshooting)
+5. [Cross-machine path rewriting](#cross-machine-path-rewriting)
+6. [Layout of the sync repo](#layout-of-the-sync-repo)
+7. [Typical workflows](#typical-workflows)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -25,8 +24,6 @@ This document is the full reference for `contix`. For a quick overview see the
 - **Tools** — the AI coding agents `contix` understands: `codex`, `claude`, and
   `hermes`.
   Each has a curated include/exclude list so only meaningful state is synced.
-- **Tracked repos** — your own git working repositories whose branches and
-  uncommitted work you want to carry between machines.
 - **Snapshot** — one `contix push`: it rebuilds the bundles, commits them to the
   sync repo, and optionally pushes to the remote.
 
@@ -47,8 +44,6 @@ Configure `contix` and prepare the local sync repo.
 --remote <url>     Git remote URL of the sync repo
 --branch <name>    Branch to sync on (default: main)
 --auto-push        Push to the remote automatically after every 'push'
---repo-root <path> Scan this directory for git repos (repeatable; default: home)
---no-auto-discover Disable automatic git repository discovery
 ```
 
 If `--remote` points at a repo that already contains data, `init` **clones** it,
@@ -60,9 +55,8 @@ turn on auto-push).
 
 ### `contix status`
 
-Shows configuration, each tool's detected state directory and file count, the
-list of tracked git repos with their current branch/cleanliness, and whether the
-sync repo has uncommitted snapshots.
+Shows configuration, each tool's detected state directory and file count, and
+whether the sync repo has uncommitted snapshots.
 
 ### `contix push`
 
@@ -71,56 +65,32 @@ sync repo has uncommitted snapshots.
 --days <N>         Only include session transcripts newer than N days (0 = all)
 --message <msg>    Commit message (default: "contix sync <time> from <host>")
 --push             Push to the git remote after committing
---no-repos         Skip tracked git working repositories
 ```
 
-Steps: discover newly created/cloned git repos, collect each tool's portable
-files into `tarball + manifest`, snapshot each tracked git repo,
-`git add -A && git commit`, then (with `--push`
-or `auto_push`) `git pull --rebase` and `git push`.
+Steps: collect each tool's portable files into `tarball + manifest`, remove any
+legacy working-repository snapshots, run `git add -A && git commit`, then (with
+`--push` or `auto_push`) `git pull --rebase` and `git push`.
 
 ### `contix pull`
 
 ```
 --tools <list>     Comma-separated tools to restore (default: all)
 --no-rewrite       Do not rewrite machine paths in restored state
---no-repos         Skip restoring tracked git working repositories
 --map OLD=NEW      Extra path mapping (repeatable)
 ```
 
 Steps: `git pull` the sync repo, extract each tool bundle into its home dir,
-verify every file against its recorded SHA-256, rewrite embedded paths for this
-machine, then restore each git repo (clone if missing, recreate branches,
-checkout the previous branch, reapply uncommitted + untracked work).
+verify every file against its recorded SHA-256, then rewrite embedded paths for
+this machine.
 
 ### `contix list`
 
-Lists tool bundles (file counts, size, source OS, tool version, timestamp) and
-git repo snapshots (branch, branch count, whether uncommitted/untracked data is
-present) currently stored in the sync repo.
+Lists tool bundles with file counts, size, source OS, tool version and timestamp.
 
 ### `contix verify`
 
 Extracts every tool bundle to a temp directory and checks all files against the
 manifest SHA-256 digests. Confirms the archives are intact and restorable.
-
-### `contix repos`
-
-```
-contix repos add <path>...    Track git repositories (skips non-repos)
-contix repos remove <path>    Stop tracking a repository
-contix repos list             Show tracked repositories and their state
-contix repos scan [root]...   Find and track repositories immediately
-```
-
-`add` records the repository's top-level directory. If a repo has no `origin`
-remote, `contix` warns you: without a remote its commit history can't be cloned
-on another machine (only its uncommitted/untracked files will be synced).
-
-`push` automatically scans `repo_roots` when `auto_discover` is enabled. The
-default root is your home directory; caches, AI tool installations, dependency
-directories, and contix's own sync repo are pruned. Restored repos are also
-registered in the receiving machine's config.
 
 ### `contix doctor`
 
@@ -147,10 +117,7 @@ Override the whole config directory with `CONTIX_CONFIG_DIR`.
   "remote": "git@github.com:you/dev-state.git",
   "branch": "main",
   "auto_push": false,
-  "auto_discover": true,
-  "home": "/home/you",
-  "repo_roots": ["/home/you"],
-  "repos": ["/home/you/code/project-a"]
+  "home": "/home/you"
 }
 ```
 
@@ -200,38 +167,13 @@ memories, skills, sessions, cron definitions and the state database. The
 following are excluded:
 
 - `auth.json`, `auth.lock`, `.env`, `.credentials.json`, `pairing/`
-- `hermes-agent/`, `bin/`, caches, logs and sandbox/runtime data
+- `hermes-agent/`, `bin/`, caches, logs, sandbox/runtime data and
+  `cron/ticker_heartbeat`
 - lock files and SQLite sidecars
 
 > To trim large bundles, use `--days N` so old session transcripts under
 > `sessions/`, `archived_sessions/` and `projects/` are dropped. Everything else
 > is kept regardless of age.
-
----
-
-## How git working repos are synced
-
-For each tracked repo, `push` records (into `git/<key>/state.json`):
-
-- `origin` remote URL
-- current branch and `HEAD` commit
-- every local branch with its commit SHA and upstream
-- whether uncommitted tracked changes exist → stored as `git/<key>/changes.patch`
-  (`git diff --binary HEAD`)
-- untracked, non-ignored files → bundled into `git/<key>/untracked.tar.gz`
-
-On `pull`, for each snapshot:
-
-1. If the working directory is missing and a remote is known → `git clone` it.
-2. `git fetch` so recorded commits/branches are reachable.
-3. Recreate any missing local branch at its recorded commit (falling back to its
-   upstream). Branches whose commit was never pushed can't be recreated and are
-   reported.
-4. `git checkout` the branch that was active at snapshot time.
-5. Restore untracked files, then reapply `changes.patch` with `git apply --3way`.
-
-If the patch doesn't apply cleanly (diverged base), the failure is reported and
-the patch remains in the sync repo so nothing is lost.
 
 ---
 
@@ -263,14 +205,9 @@ Add extra rules with `--map OLD=NEW` (repeatable), or disable rewriting with
 ├── codex/
 │   ├── bundle.tar.gz
 │   └── manifest.json
-├── hermes/
+└── hermes/
 │   ├── bundle.tar.gz
 │   └── manifest.json
-└── git/
-    └── <name>-<hash>/        # one dir per tracked repo
-        ├── state.json        # remote, branches, current branch, HEAD
-        ├── changes.patch     # uncommitted tracked changes (if any)
-        └── untracked.tar.gz  # untracked non-ignored files (if any)
 ```
 
 ---
@@ -304,12 +241,6 @@ make upgrade
 contix push --tools codex --days 14 --push
 ```
 
-**Restore AI state but leave my local repos alone**
-
-```bash
-contix pull --no-repos
-```
-
 ---
 
 ## Troubleshooting
@@ -320,14 +251,6 @@ contix pull --no-repos
 first. `contix push --push` runs `git pull --rebase` before pushing; if a genuine
 conflict exists, resolve it in `repo_path` and push again.
 
-**A repo shows `skipped (repo missing locally and no remote recorded)`** — the
-tracked repo had no `origin` remote when snapshotted, so there's nothing to clone
-on this machine. Add a remote and re-push, or create the directory manually.
-
 **`version mismatch` on pull** — the tool version that produced the state differs
 from the one installed here. State usually still loads; update the tool to match
 if you hit format issues.
-
-**Patch didn't apply** — the repo's base commits diverged too far. The patch is
-preserved at `git/<name>/changes.patch` in the sync repo; apply it by hand with
-`git apply --3way`.

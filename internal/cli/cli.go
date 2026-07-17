@@ -7,22 +7,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"contix/internal/config"
-	"contix/internal/gitsync"
 	"contix/internal/gitutil"
 	"contix/internal/platform"
-	"contix/internal/repodiscovery"
 	"contix/internal/tool"
 )
 
 // Version is the contix release, overridable at build time with
 // -ldflags "-X contix/internal/cli.Version=x.y.z".
-var Version = "0.2.0"
+var Version = "0.2.1"
 
-const usage = `contix — sync Codex, Claude Code, Hermes and git working state to one GitHub repo.
+const usage = `contix — sync Codex, Claude Code and Hermes state to one GitHub repo.
 
 USAGE
   contix <command> [flags]
@@ -30,11 +27,10 @@ USAGE
 COMMANDS
   init      Configure the sync repo (clones the remote on a new machine)
   status    Show configuration and what would be synced
-  push      Collect state + repo snapshots, commit, and push to the remote
-  pull      Pull from the remote and restore state + repos onto this machine
+  push      Collect AI state, commit, and push to the remote
+  pull      Pull from the remote and restore AI state onto this machine
   list      List what is currently stored in the sync repo
   verify    Check archive integrity of everything in the sync repo
-  repos     Manage tracked git working repositories (add/remove/list)
   doctor    Diagnose the environment and configuration
   version   Print the contix version
   help      Show this help
@@ -45,7 +41,6 @@ QUICK START
   # First machine — the remote may be SSH or HTTPS:
   contix init --remote git@github.com:you/dev-state.git
   #   or: contix init --remote https://github.com/you/dev-state.git
-  contix repos add ~/code/project-a ~/code/project-b
   contix push
 
   # New machine
@@ -73,8 +68,6 @@ func Run(args []string) int {
 		return cmdList(rest)
 	case "verify":
 		return cmdVerify(rest)
-	case "repos":
-		return cmdRepos(rest)
 	case "doctor":
 		return cmdDoctor(rest)
 	case "version", "--version", "-v":
@@ -112,9 +105,6 @@ func cmdInit(args []string) int {
 	remote := fs.String("remote", "", "git remote URL of the sync repo")
 	branch := fs.String("branch", "main", "git branch to sync on")
 	autoPush := fs.Bool("auto-push", false, "push to the remote automatically after each 'push'")
-	noAutoDiscover := fs.Bool("no-auto-discover", false, "do not automatically find git repositories")
-	var repoRoots pathList
-	fs.Var(&repoRoots, "repo-root", "directory to scan for git repos (repeatable; default: home)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -146,24 +136,9 @@ func cmdInit(args []string) int {
 	}
 	cfg.AutoPush = *autoPush
 	cfg.Home = platform.Home()
-	if *noAutoDiscover {
-		cfg.AutoDiscover = false
-	}
-	if len(repoRoots) > 0 {
-		cfg.RepoRoots = cleanPaths(repoRoots)
-		cfg.AutoDiscover = true
-	}
 
 	if err := ensureRepo(cfg); err != nil {
 		return fail(err)
-	}
-	var discovered []string
-	if cfg.AutoDiscover {
-		var err error
-		discovered, err = discoverAndAdd(&cfg, nil)
-		if err != nil {
-			return fail(fmt.Errorf("discover git repos: %w", err))
-		}
 	}
 	if err := cfg.Save(); err != nil {
 		return fail(err)
@@ -173,18 +148,14 @@ func cmdInit(args []string) int {
 	fmt.Printf("  sync repo : %s\n", cfg.RepoPath)
 	fmt.Printf("  remote    : %s\n", orNone(cfg.Remote))
 	fmt.Printf("  branch    : %s\n", cfg.Branch)
-	fmt.Printf("  repo scan : %v (%s)\n", cfg.AutoDiscover, strings.Join(cfg.RepoRoots, ", "))
 	fmt.Printf("  config    : %s\n\n", config.Path())
-	if len(discovered) > 0 {
-		fmt.Printf("Automatically tracking %d git repositories.\n", len(discovered))
-	}
 	if cfg.Remote == "" {
 		fmt.Println("No remote set. Add one later with: contix init --remote <url>")
 	} else if gitutil.ClassifyRemote(cfg.Remote) == gitutil.RemoteHTTP {
 		fmt.Println("Using an HTTPS remote: pushing needs a git credential helper or a")
 		fmt.Println("Personal Access Token. SSH remotes (git@github.com:…) use your SSH key.")
 	}
-	fmt.Println("Next: run 'contix push'; new git repositories are discovered automatically.")
+	fmt.Println("Next: run 'contix push' to snapshot your AI tool state.")
 	fmt.Println("On a new machine after init: 'contix pull' to restore everything.")
 	return 0
 }
@@ -241,7 +212,7 @@ func writeRepoReadme(dir string) {
 	_ = os.WriteFile(readme, []byte(
 		"# contix sync repo\n\n"+
 			"This repository is managed by [contix](https://github.com/). It stores the\n"+
-			"latest snapshot of Codex / Claude Code / Hermes state and git working repos.\n\n"+
+			"latest snapshot of Codex / Claude Code / Hermes state.\n\n"+
 			"Do not edit by hand. Use `contix push` and `contix pull`.\n"), 0o644)
 }
 
@@ -255,7 +226,6 @@ func cmdStatus(args []string) int {
 	fmt.Printf("remote    : %s\n", orNone(cfg.Remote))
 	fmt.Printf("branch    : %s\n", cfg.Branch)
 	fmt.Printf("auto-push : %v\n\n", cfg.AutoPush)
-	fmt.Printf("repo scan : %v (%s)\n\n", cfg.AutoDiscover, strings.Join(cfg.RepoRoots, ", "))
 
 	fmt.Println("AI tools:")
 	names := tool.Names()
@@ -268,25 +238,6 @@ func cmdStatus(args []string) int {
 		}
 		files, _ := t.IncludedFiles()
 		fmt.Printf("  %-8s %d files to sync (%s)\n", name, len(files), home)
-	}
-
-	fmt.Println("\nTracked git repos:")
-	if len(cfg.Repos) == 0 {
-		fmt.Println("  (none — add with 'contix repos add <path>')")
-	}
-	for _, p := range cfg.Repos {
-		r := gitutil.Repo{Dir: p}
-		if !r.IsRepo() {
-			fmt.Printf("  %s  (missing / not a repo)\n", p)
-			continue
-		}
-		branch, _ := r.CurrentBranch()
-		clean, _ := r.IsClean()
-		state := "clean"
-		if !clean {
-			state = "uncommitted changes"
-		}
-		fmt.Printf("  %s  [%s, %s]\n", p, branch, state)
 	}
 
 	// Sync repo git status.
@@ -383,55 +334,4 @@ func parseTools(csv string) ([]tool.Tool, error) {
 		out = append(out, t)
 	}
 	return out, nil
-}
-
-type pathList []string
-
-func (p *pathList) String() string { return strings.Join(*p, ",") }
-func (p *pathList) Set(v string) error {
-	if strings.TrimSpace(v) == "" {
-		return fmt.Errorf("path cannot be empty")
-	}
-	*p = append(*p, v)
-	return nil
-}
-
-func cleanPaths(paths []string) []string {
-	out := make([]string, 0, len(paths))
-	for _, p := range paths {
-		if abs, err := filepath.Abs(p); err == nil {
-			out = append(out, filepath.Clean(abs))
-		}
-	}
-	return out
-}
-
-// discoverAndAdd scans either overrideRoots or the configured roots and adds
-// repositories that are not already configured. It does not save the config.
-func discoverAndAdd(cfg *config.Config, overrideRoots []string) ([]string, error) {
-	roots := cfg.RepoRoots
-	if len(overrideRoots) > 0 {
-		roots = cleanPaths(overrideRoots)
-	}
-	found, err := repodiscovery.Discover(roots, []string{cfg.RepoPath})
-	if err != nil {
-		return nil, err
-	}
-	var added []string
-	for _, p := range found {
-		if cfg.AddRepo(p) {
-			added = append(added, p)
-		}
-	}
-	return added, nil
-}
-
-// listStates returns tracked git snapshots sorted by name for stable output.
-func listStates(repoRoot string) ([]gitsync.State, error) {
-	states, err := gitsync.List(repoRoot)
-	if err != nil {
-		return nil, err
-	}
-	sort.Slice(states, func(i, j int) bool { return states[i].Name < states[j].Name })
-	return states, nil
 }

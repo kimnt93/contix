@@ -1,6 +1,7 @@
 package archive
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,6 +43,13 @@ func TestCreateExtractVerifyRoundTrip(t *testing.T) {
 	problems, _ = Verify(dest, m)
 	if len(problems) == 0 {
 		t.Fatal("expected verify to detect tampering")
+	}
+}
+
+func TestSkippableSourceErrorIncludesPermissionDenied(t *testing.T) {
+	err := &os.PathError{Op: "open", Path: "runtime-file", Err: fs.ErrPermission}
+	if !skippableSourceError(err) {
+		t.Fatal("permission-denied runtime files must be skipped")
 	}
 }
 

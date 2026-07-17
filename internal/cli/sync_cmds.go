@@ -9,10 +9,8 @@ import (
 
 	"contix/internal/archive"
 	"contix/internal/config"
-	"contix/internal/gitsync"
 	"contix/internal/gitutil"
 	"contix/internal/pathrewrite"
-	"contix/internal/platform"
 	"contix/internal/syncer"
 	"contix/internal/tool"
 )
@@ -36,7 +34,6 @@ func cmdPush(args []string) int {
 	days := fs.Int("days", 0, "only include session transcripts newer than N days (0 = all)")
 	message := fs.String("message", "", "commit message (default: auto)")
 	push := fs.Bool("push", false, "push to the git remote after committing")
-	noRepos := fs.Bool("no-repos", false, "skip tracked git working repositories")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -47,21 +44,12 @@ func cmdPush(args []string) int {
 	if err := ensureRepo(cfg); err != nil {
 		return fail(err)
 	}
-	if !*noRepos && cfg.AutoDiscover {
-		added, err := discoverAndAdd(&cfg, nil)
-		if err != nil {
-			return fail(fmt.Errorf("discover git repos: %w", err))
+	legacyGit := filepath.Join(cfg.RepoPath, "git")
+	if _, err := os.Stat(legacyGit); err == nil {
+		if err := os.RemoveAll(legacyGit); err != nil {
+			return fail(fmt.Errorf("remove legacy git snapshots: %w", err))
 		}
-		if len(added) > 0 {
-			if err := cfg.Save(); err != nil {
-				return fail(err)
-			}
-			fmt.Printf("Discovered %d new git repositories:\n", len(added))
-			for _, p := range added {
-				fmt.Printf("  + %s\n", p)
-			}
-			fmt.Println()
-		}
+		fmt.Println("Removed legacy git working-repository snapshots.")
 	}
 
 	tls, err := parseTools(*tools)
@@ -80,29 +68,6 @@ func cmdPush(args []string) int {
 			continue
 		}
 		fmt.Printf("  %-8s %d files, %s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version))
-	}
-
-	if !*noRepos && len(cfg.Repos) > 0 {
-		fmt.Println("\nSnapshotting git working repos:")
-		home := platform.Home()
-		for _, p := range cfg.Repos {
-			res, err := gitsync.Snapshot(cfg.RepoPath, home, p)
-			if err != nil {
-				return fail(fmt.Errorf("snapshot %s: %w", p, err))
-			}
-			if res.Skipped != "" {
-				fmt.Printf("  %-24s skipped (%s)\n", filepath.Base(p), res.Skipped)
-				continue
-			}
-			extra := ""
-			if res.State.HasPatch {
-				extra += fmt.Sprintf(", %s uncommitted", humanBytes(res.PatchSize))
-			}
-			if res.Untracked > 0 {
-				extra += fmt.Sprintf(", %d untracked", res.Untracked)
-			}
-			fmt.Printf("  %-24s [%s] %d branches%s\n", res.State.Name, res.State.CurrentBranch, len(res.State.Branches), extra)
-		}
 	}
 
 	// Commit + optional push.
@@ -143,7 +108,6 @@ func cmdPull(args []string) int {
 	fs := flag.NewFlagSet("pull", flag.ContinueOnError)
 	tools := fs.String("tools", "", "comma-separated tools to restore (default: all)")
 	noRewrite := fs.Bool("no-rewrite", false, "do not rewrite machine paths in restored state")
-	noRepos := fs.Bool("no-repos", false, "skip restoring tracked git working repositories")
 	var maps mapList
 	fs.Var(&maps, "map", "extra path mapping OLD=NEW (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -198,55 +162,7 @@ func cmdPull(args []string) int {
 		}
 	}
 
-	if !*noRepos {
-		states, err := listStates(cfg.RepoPath)
-		if err != nil {
-			return fail(err)
-		}
-		if len(states) > 0 {
-			fmt.Println("\nRestoring git working repos:")
-			home := platform.Home()
-			configChanged := false
-			for _, st := range states {
-				res, err := gitsync.Restore(cfg.RepoPath, home, st)
-				if err != nil {
-					fmt.Printf("  %-24s error: %v\n", st.Name, err)
-					continue
-				}
-				if res.Skipped != "" {
-					fmt.Printf("  %-24s skipped (%s)\n", st.Name, res.Skipped)
-					continue
-				}
-				action := "updated"
-				if res.Cloned {
-					action = "cloned"
-				}
-				fmt.Printf("  %-24s %s at %s\n", st.Name, action, res.Path)
-				if res.BranchesCreated > 0 {
-					fmt.Printf("           %d branch(es) restored\n", res.BranchesCreated)
-				}
-				if res.PatchApplied {
-					fmt.Println("           uncommitted changes reapplied")
-				}
-				if res.UntrackedFiles > 0 {
-					fmt.Printf("           %d untracked file(s) restored\n", res.UntrackedFiles)
-				}
-				for _, w := range res.Warnings {
-					fmt.Printf("           ! %s\n", w)
-				}
-				if res.Path != "" && (gitutil.Repo{Dir: res.Path}).IsRepo() && cfg.AddRepo(res.Path) {
-					configChanged = true
-				}
-			}
-			if configChanged {
-				if err := cfg.Save(); err != nil {
-					return fail(err)
-				}
-			}
-		}
-	}
-
-	fmt.Println("\nDone. Your AI agents and projects should resume where you left off.")
+	fmt.Println("\nDone. Your AI agents should resume where you left off.")
 	return 0
 }
 
@@ -278,24 +194,6 @@ func cmdList(args []string) int {
 		fmt.Println("  (none)")
 	}
 
-	states, err := listStates(cfg.RepoPath)
-	if err != nil {
-		return fail(err)
-	}
-	fmt.Println("\nGit working repos:")
-	if len(states) == 0 {
-		fmt.Println("  (none)")
-	}
-	for _, st := range states {
-		extra := ""
-		if st.HasPatch {
-			extra += ", uncommitted"
-		}
-		if len(st.Untracked) > 0 {
-			extra += fmt.Sprintf(", %d untracked", len(st.Untracked))
-		}
-		fmt.Printf("  %-24s [%s] %d branches%s\n     %s\n", st.Name, st.CurrentBranch, len(st.Branches), extra, orNone(st.RelPath))
-	}
 	return 0
 }
 

@@ -42,7 +42,7 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 		abs := filepath.Join(srcRoot, filepath.FromSlash(rel))
 		entry, staged, err := stageFile(abs)
 		if err != nil {
-			if os.IsNotExist(err) || errors.Is(err, io.EOF) {
+			if skippableSourceError(err) {
 				// Tool runtimes and git worktrees can delete/truncate temporary or
 				// untracked files after discovery. They are not a reason to fail the
 				// whole snapshot.
@@ -89,6 +89,10 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 		}
 	}
 	return m, nil
+}
+
+func skippableSourceError(err error) bool {
+	return os.IsNotExist(err) || os.IsPermission(err) || errors.Is(err, io.EOF)
 }
 
 // stageFile takes a bounded point-in-time copy before writing a tar header. If
