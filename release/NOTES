@@ -14,3 +14,4 @@
 - [x] Support collect --force-close to stop selected tools before snapshotting
 - [x] Tolerate temporary files that disappear while active state is compressed
 - [x] Retry transient agent heartbeat and lock-file permission races
+- [x] Omit only unreadable Hermes ticker liveness markers after bounded retries

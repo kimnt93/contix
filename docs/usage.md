@@ -77,7 +77,11 @@ agent work, so the option is never implicit.
 Temporary paths that disappear between discovery and compression are omitted:
 there are no remaining bytes to archive. Permission failures are retried for
 two seconds so short-lived mode changes on heartbeat and lock files can settle.
-An existing file that remains unreadable still stops the collection.
+An existing file that remains unreadable still stops the collection. The only
+exception is Hermes' ticker heartbeat/success markers and their atomic-write
+temps: if one remains unreadable, it is listed in the manifest and collection
+output as omitted volatile runtime state. These files contain machine-liveness
+timestamps and must not be restored on another computer.
 
 ### `contix push`
 
@@ -327,3 +331,5 @@ explicitly overwrite them with the synced snapshot.
 are retried for two seconds, and files deleted during that window are safely
 omitted. A file that still exists but remains unreadable is not silently lost:
 stop the related application or correct its permissions, then collect again.
+Unreadable Hermes ticker liveness markers are reported and omitted because they
+are runtime health signals rather than portable agent state.

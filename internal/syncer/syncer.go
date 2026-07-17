@@ -23,6 +23,7 @@ type PushResult struct {
 	Bytes   int64
 	Version string
 	Parts   int
+	Omitted int
 	Skipped string // reason, if skipped
 }
 
@@ -72,7 +73,7 @@ func Push(cfg config.Config, t tool.Tool) (PushResult, error) {
 	res.Version = version
 
 	m := archive.NewManifest(t.Name, version, home)
-	m, err = archive.Create(home, rels, bundlePath, m)
+	m, err = archive.Create(home, rels, bundlePath, m, t.VolatileUnreadable...)
 	if err != nil {
 		return res, err
 	}
@@ -85,6 +86,7 @@ func Push(cfg config.Config, t tool.Tool) (PushResult, error) {
 		total += fe.Size
 	}
 	res.Files = len(m.Files)
+	res.Omitted = len(m.Omitted)
 	res.Bytes = total
 	res.Parts = len(m.BundleParts)
 	if res.Parts == 0 {

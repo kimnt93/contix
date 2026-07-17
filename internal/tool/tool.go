@@ -29,6 +29,9 @@ type Tool struct {
 	// separate from Binary because some products have several state roots or
 	// helper processes.
 	Processes []string
+	// VolatileUnreadable lists runtime-only path patterns that may be omitted if
+	// they remain unreadable after archive retries. Durable paths stay fatal.
+	VolatileUnreadable []string
 	// Version detects the installed tool version from its state dir. Returns
 	// "" when unknown.
 	Version func(home string) string
@@ -123,7 +126,12 @@ func hermes() Tool {
 		Home:      platform.HermesHome,
 		Binary:    "hermes",
 		Processes: []string{"hermes", "hermes-agent"},
-		Version:   func(home string) string { return "" },
+		VolatileUnreadable: []string{
+			"cron/ticker_heartbeat", "cron/ticker_last_success", "cron/.hb_*.tmp",
+			"profiles/*/cron/ticker_heartbeat", "profiles/*/cron/ticker_last_success",
+			"profiles/*/cron/.hb_*.tmp",
+		},
+		Version: func(home string) string { return "" },
 	}
 }
 

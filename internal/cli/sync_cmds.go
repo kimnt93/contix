@@ -87,7 +87,11 @@ func cmdCollect(args []string) int {
 		if res.Parts > 1 {
 			parts = fmt.Sprintf(", %d compressed parts", res.Parts)
 		}
-		fmt.Printf("  %-24s done: %d files, %s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts)
+		omitted := ""
+		if res.Omitted > 0 {
+			omitted = fmt.Sprintf(", %d unreadable volatile runtime file(s) omitted", res.Omitted)
+		}
+		fmt.Printf("  %-24s done: %d files, %s%s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts, omitted)
 	}
 
 	// Commit the collected snapshot locally.

@@ -212,7 +212,9 @@ exceeds 5 MiB, contix writes `bundle.tar.gz.part-000`, `part-001`, and so on.
   `contix collect --force-close`. Files that disappear during collection are
   omitted because they no longer exist. Transient permission failures from
   heartbeat/lock creation are retried for two seconds; stable permission and
-  other read errors remain fatal.
+  other read errors remain fatal. Hermes ticker liveness markers are the sole
+  exception: if still unreadable after retries, they are reported and omitted
+  because they contain only machine-runtime health timestamps.
 
 ---
 
