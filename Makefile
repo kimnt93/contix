@@ -1,7 +1,7 @@
 # contix — build & install
 BINARY   := contix
 PKG      := .
-VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION  ?= $(shell tr -d '\r\n' < release/VERSION 2>/dev/null || echo dev)
 LDFLAGS  := -s -w -X contix/internal/cli.Version=$(VERSION)
 DIST     := dist
 
@@ -66,6 +66,7 @@ install:
 	@cp "$(PREBUILT)" "$(BINDIR)/$(BINARY)$(EXT)"
 	@chmod +x "$(BINDIR)/$(BINARY)$(EXT)" 2>/dev/null || true
 	@echo "installed $(PREBUILT) -> $(BINDIR)/$(BINARY)$(EXT)"
+	@"$(BINDIR)/$(BINARY)$(EXT)" version
 	@case ":$(PATH):" in *":$(BINDIR):"*) ;; \
 	  *) echo "note: $(BINDIR) is not on your PATH; add it to use 'contix'." ;; esac
 

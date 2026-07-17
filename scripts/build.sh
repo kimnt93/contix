@@ -10,7 +10,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-VERSION="${1:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
+VERSION="${1:-$(tr -d '\r\n' < release/VERSION 2>/dev/null || echo dev)}"
 LDFLAGS="-s -w -X contix/internal/cli.Version=${VERSION}"
 DIST="dist"
 

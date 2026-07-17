@@ -13,11 +13,12 @@ import (
 	"contix/internal/gitutil"
 	"contix/internal/platform"
 	"contix/internal/tool"
+	"contix/release"
 )
 
 // Version is the contix release, overridable at build time with
 // -ldflags "-X contix/internal/cli.Version=x.y.z".
-var Version = "0.2.1"
+var Version = releaseinfo.Version()
 
 const usage = `contix — sync Codex, Claude Code and Hermes state to one GitHub repo.
 
@@ -72,6 +73,9 @@ func Run(args []string) int {
 		return cmdDoctor(rest)
 	case "version", "--version", "-v":
 		fmt.Printf("contix %s\n", Version)
+		if notes := releaseinfo.Notes(); notes != "" {
+			fmt.Printf("notes: %s\n", notes)
+		}
 		return 0
 	case "help", "-h", "--help":
 		fmt.Print(usage)

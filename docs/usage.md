@@ -235,6 +235,11 @@ contix pull
 make upgrade
 ```
 
+`make install`, `make upgrade`, and `contix version` show the version and short
+release notes. Change [`release/VERSION`](../release/VERSION) and
+[`release/NOTES`](../release/NOTES), then run `make release`; both values are
+embedded into the resulting binaries.
+
 **Only sync Codex, keep bundles small**
 
 ```bash

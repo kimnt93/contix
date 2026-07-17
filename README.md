@@ -53,6 +53,15 @@ make install      # installs the prebuilt binary for your OS/arch
 make upgrade      # later: fast-forward this checkout and reinstall latest
 ```
 
+Both commands print the installed version and its short release notes. Release
+metadata is kept in two easy-to-edit files:
+
+- [`release/VERSION`](release/VERSION) — one version string, such as `0.2.2`
+- [`release/NOTES`](release/NOTES) — a short install/upgrade message
+
+The files are embedded into the binary during the build, so they are not needed
+at runtime. Edit them before running `make release` for a new version.
+
 `make install` auto-detects your platform (Linux/macOS/Windows, amd64/arm64),
 copies the matching binary from `dist/`, and installs it to a bin directory:
 
