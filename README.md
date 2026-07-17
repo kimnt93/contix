@@ -58,7 +58,7 @@ Upgrade later with `make upgrade`.
 - [x] Pull conflict notification; `pull --ignore` explicitly overwrites
 - [x] Optional `collect --tools ...` and `collect --force-close`
 - [x] Version and feature notes embedded in install and upgrade output
-- [x] Retired Hermes, OpenClaw, machine-state, and full IDE bundles cleaned up
+- [x] Coding-agent-only scope with retired non-coding bundles cleaned up
 
 ## Documentation
 
