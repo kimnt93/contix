@@ -5,6 +5,7 @@ package gitutil
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -34,6 +35,17 @@ func (r Repo) run(args ...string) (string, error) {
 		return "", fmt.Errorf("git %s: %v: %s", strings.Join(args, " "), err, msg)
 	}
 	return strings.TrimSpace(out.String()), nil
+}
+
+func (r Repo) runStreaming(out io.Writer, args ...string) error {
+	cmd := exec.Command("git", append([]string{"-C", r.Dir}, args...)...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = out
+	cmd.Stderr = out
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	return nil
 }
 
 // IsRepo reports whether Dir is inside a git working tree.
@@ -188,6 +200,14 @@ func (r Repo) Pull(branch string) error {
 	return err
 }
 
+// PullProgress pulls while streaming Git's native transfer progress.
+func (r Repo) PullProgress(branch string, out io.Writer) error {
+	if !r.HasRemote() {
+		return nil
+	}
+	return r.runStreaming(out, "pull", "--progress", "--rebase", "--autostash", "origin", branch)
+}
+
 // Push pushes the branch to origin, setting upstream on first push.
 func (r Repo) Push(branch string) error {
 	if !r.HasRemote() {
@@ -195,6 +215,14 @@ func (r Repo) Push(branch string) error {
 	}
 	_, err := r.run("push", "-u", "origin", branch)
 	return err
+}
+
+// PushProgress pushes while streaming Git's native transfer progress.
+func (r Repo) PushProgress(branch string, out io.Writer) error {
+	if !r.HasRemote() {
+		return fmt.Errorf("no git remote configured")
+	}
+	return r.runStreaming(out, "push", "--progress", "-u", "origin", branch)
 }
 
 // Status returns short porcelain status lines.

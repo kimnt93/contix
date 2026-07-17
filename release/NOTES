@@ -1,1 +1,1 @@
-Provides only init, collect, push and pull; collect auto-commits and splits large bundles.
+Uses 5 MiB archive parts and shows live progress while collecting, pushing and pulling.

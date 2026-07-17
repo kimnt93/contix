@@ -59,7 +59,7 @@ Re-running `init` updates the configuration in place, such as adding a remote.
 
 Steps: collect each tool's portable files into `tarball + manifest`, remove any
 legacy working-repository snapshots, then run `git add -A && git commit` locally.
-Compressed bundles larger than 50 MiB are split into GitHub-safe parts. If a
+Compressed bundles larger than 5 MiB are split into GitHub-safe parts. If a
 previous snapshot was never accepted by the remote, `collect` replaces/squashes
 that unpublished history so rejected large objects are no longer pushed.
 The commit message, hostname and timestamp are generated automatically.
@@ -68,13 +68,15 @@ The commit message, hostname and timestamp are generated automatically.
 
 Uploads the state previously committed by `contix collect`. Before pushing, it
 pulls and rebases the configured sync branch. It refuses to run when the sync
-repo contains uncommitted changes.
+repo contains uncommitted changes. Remote Git transfer progress is streamed
+while it works.
 
 ### `contix pull`
 
 Steps: `git pull` the sync repo, extract each tool bundle into its home dir,
 verify every file against its recorded SHA-256, then rewrite embedded paths for
 this machine. Pull always restores all three tools and verifies their checksums.
+Git transfer progress and per-tool restore activity remain visible throughout.
 
 ---
 
@@ -119,7 +121,7 @@ exclude patterns (relative to each tool's home):
 - `a/b/c` — an exact path or a prefix directory
 
 Archives use gzip's maximum compression level. A compressed bundle larger than
-50 MiB is stored as ordered `bundle.tar.gz.part-NNN` files. `pull` reads those
+5 MiB is stored as ordered `bundle.tar.gz.part-NNN` files. `pull` reads those
 parts as one continuous archive and verifies restored files; older single-file
 bundles remain compatible.
 
@@ -179,7 +181,7 @@ Path rewriting is automatic during `contix pull`.
 │   ├── bundle.tar.gz         # compressed Claude state
 │   └── manifest.json         # per-file SHA-256, tool version, source machine
 ├── codex/
-│   ├── bundle.tar.gz.part-000 # large bundles are split into 50 MiB parts
+│   ├── bundle.tar.gz.part-000 # large bundles are split into 5 MiB parts
 │   ├── bundle.tar.gz.part-001
 │   └── manifest.json
 └── hermes/

@@ -38,7 +38,7 @@ but none understand multiple AI coding agents. `contix` does:
 - **One repo, latest wins** — everything lands in a single git repo that always
   holds the latest snapshot. No servers, no accounts, no lock-in.
 - **GitHub-size safe** — archives use maximum gzip compression and are split
-  into 50 MiB parts when necessary, staying below GitHub's per-file limit.
+  into 5 MiB parts when necessary, staying below GitHub's per-file limit.
 - **Cross-platform & portable** — Linux, macOS, Windows. Paths embedded in
   session files are rewritten to the new machine's home directory automatically.
 
@@ -58,7 +58,7 @@ make upgrade      # later: fast-forward this checkout and reinstall latest
 Both commands print the installed version and its short release notes. Release
 metadata is kept in two easy-to-edit files:
 
-- [`release/VERSION`](release/VERSION) — one version string, such as `0.4.0`
+- [`release/VERSION`](release/VERSION) — one version string, such as `0.4.1`
 - [`release/NOTES`](release/NOTES) — a short install/upgrade message
 
 The files are embedded into the binary during the build, so they are not needed
@@ -122,6 +122,9 @@ Your Codex/Claude/Hermes memory and settings are back.
 | `contix push` | Upload the collected state to the configured remote. |
 | `contix pull` | Pull from the remote and restore AI state onto this machine. |
 
+Long operations stay visible: collection and restoration show an activity
+spinner, while Git uploads and downloads stream their native percentage output.
+
 Optional collection filter:
 
 - `contix collect --tools codex` — sync only one tool.
@@ -154,7 +157,7 @@ sandbox state, runtime binaries and the installed `hermes-agent` source/venv are
 skipped.
 
 Each tool is stored as one recursive `tar.gz` stream. When its compressed size
-exceeds 50 MiB, contix writes `bundle.tar.gz.part-000`, `part-001`, and so on.
+exceeds 5 MiB, contix writes `bundle.tar.gz.part-000`, `part-001`, and so on.
 `pull` reassembles and verifies the parts automatically.
 
 ---

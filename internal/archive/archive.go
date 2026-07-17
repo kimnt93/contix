@@ -89,8 +89,8 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 }
 
 // bundlePartSize is a variable so tests can exercise chunking without creating
-// huge fixtures. Production archives use 50 MiB chunks.
-var bundlePartSize int64 = 50 * 1024 * 1024
+// huge fixtures. Production archives use 5 MiB chunks.
+var bundlePartSize int64 = 5 * 1024 * 1024
 
 func publishBundle(tmpBundle, bundlePath string) ([]BundlePart, error) {
 	info, err := os.Stat(tmpBundle)

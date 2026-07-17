@@ -42,7 +42,9 @@ func cmdCollect(args []string) int {
 
 	fmt.Println("Collecting AI tool state:")
 	for _, t := range tls {
+		stop := startActivity(fmt.Sprintf("  %-8s compressing", t.Name))
 		res, err := syncer.Push(cfg, t)
+		stop()
 		if err != nil {
 			return fail(fmt.Errorf("push %s: %w", t.Name, err))
 		}
@@ -54,7 +56,7 @@ func cmdCollect(args []string) int {
 		if res.Parts > 1 {
 			parts = fmt.Sprintf(", %d compressed parts", res.Parts)
 		}
-		fmt.Printf("  %-8s %d files, %s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts)
+		fmt.Printf("  %-8s done: %d files, %s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts)
 	}
 
 	// Commit the collected snapshot locally.
@@ -96,6 +98,7 @@ func cmdPush(args []string) int {
 	if !r.IsRepo() {
 		return fail(fmt.Errorf("sync repo not initialised; run 'contix init' first"))
 	}
+	fmt.Println("Preparing collected state for upload...")
 	clean, err := r.IsClean()
 	if err != nil {
 		return fail(err)
@@ -103,13 +106,15 @@ func cmdPush(args []string) int {
 	if !clean {
 		return fail(fmt.Errorf("sync repo has uncommitted changes; run 'contix collect' first"))
 	}
+	fmt.Println("Checking remote branch...")
 	if r.RemoteHasBranch(cfg.Branch) {
 		fmt.Println("Updating from remote before push...")
-		if err := r.Pull(cfg.Branch); err != nil {
+		if err := r.PullProgress(cfg.Branch, os.Stdout); err != nil {
 			return fail(err)
 		}
 	}
-	if err := r.Push(cfg.Branch); err != nil {
+	fmt.Println("Pushing collected state...")
+	if err := r.PushProgress(cfg.Branch, os.Stdout); err != nil {
 		return fail(err)
 	}
 	fmt.Println("Pushed collected state to", cfg.Remote)
@@ -136,7 +141,7 @@ func cmdPull(args []string) int {
 	}
 	if cfg.Remote != "" {
 		fmt.Println("Pulling latest from remote...")
-		if err := r.Pull(cfg.Branch); err != nil {
+		if err := r.PullProgress(cfg.Branch, os.Stdout); err != nil {
 			return fail(err)
 		}
 	}
@@ -148,7 +153,9 @@ func cmdPull(args []string) int {
 
 	fmt.Println("\nRestoring AI tool state:")
 	for _, t := range tls {
+		stop := startActivity(fmt.Sprintf("  %-8s restoring and verifying", t.Name))
 		res, err := syncer.Pull(cfg, t, nil, true)
+		stop()
 		if err != nil {
 			return fail(fmt.Errorf("pull %s: %w", t.Name, err))
 		}
@@ -156,7 +163,7 @@ func cmdPull(args []string) int {
 			fmt.Printf("  %-8s skipped (%s)\n", t.Name, res.Skipped)
 			continue
 		}
-		line := fmt.Sprintf("  %-8s %d files restored", t.Name, res.Files)
+		line := fmt.Sprintf("  %-8s done: %d files restored", t.Name, res.Files)
 		if res.FilesRewrite > 0 || res.DirsRenamed > 0 {
 			line += fmt.Sprintf(", %d rewritten, %d dirs renamed", res.FilesRewrite, res.DirsRenamed)
 		}
