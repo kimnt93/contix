@@ -21,11 +21,10 @@ This document is the full reference for `contix`. For a quick overview see the
 - **Sync repo** — a single git repository you own (usually private on GitHub)
   that stores the *latest* snapshot of everything. `contix` keeps a local clone
   and pushes/pulls it.
-- **Targets** — agent state, VS Code-family editor data/extensions, SSH and
-  hosts. Product groups include `antigravity`, `cursor`, `kiro`, `vscode`,
-  `vscodium`, `void` and `windsurf`.
-  Agent and SSH roots are complete snapshots; hosts selects only the hosts file
-  rather than the entire system configuration directory.
+- **Targets** — Codex, Claude Code, Hermes, Kiro CLI, Antigravity and OpenClaw
+  agent state, plus SSH and hosts. IDE application data and extensions are not
+  targets. Agent and SSH roots are complete snapshots; hosts selects only the
+  hosts file rather than the entire system configuration directory.
 - **Snapshot** — one `contix collect`: it rebuilds the bundles, commits them to the
   sync repo, and optionally pushes to the remote.
 
@@ -73,7 +72,7 @@ in the sync repo is kept.
 then forcibly terminates any matching process that remains. With `--tools`, only
 those selected products are closed. Without `--tools`, all known synced
 applications are closed. This can terminate active sessions and discard unsaved
-editor work, so the option is never implicit.
+agent work, so the option is never implicit.
 
 Temporary paths that disappear between discovery and compression are omitted:
 there are no remaining bytes to archive. Other failures, including permission
@@ -131,19 +130,11 @@ Environment overrides for tool locations:
 - `HERMES_HOME` — Hermes Agent state dir (default `~/.hermes`)
 - `KIRO_HOME` — Kiro state dir (default `~/.kiro`)
 - `ANTIGRAVITY_HOME` — Antigravity/Gemini state root (default `~/.gemini`)
+- `OPENCLAW_STATE_DIR` — OpenClaw mutable state root (default `~/.openclaw`)
+- `OPENCLAW_HOME` — base home for OpenClaw defaults
+- `OPENCLAW_PROFILE` — named profile (`~/.openclaw-<profile>`)
 - `CONTIX_SSH_HOME` — SSH config dir (default `~/.ssh`)
 - `CONTIX_HOSTS_DIR` — system hosts directory (default `/etc` on Unix)
-- `CONTIX_CURSOR_DATA_HOME`, `CONTIX_CURSOR_HOME`
-- `CONTIX_WINDSURF_DATA_HOME`, `CONTIX_WINDSURF_AGENT_HOME`, `CONTIX_WINDSURF_HOME`
-- `CONTIX_VSCODE_DATA_HOME`, `CONTIX_VSCODE_HOME`
-- `CONTIX_VSCODIUM_DATA_HOME`, `CONTIX_VSCODIUM_HOME`
-- `CONTIX_VOID_DATA_HOME`, `CONTIX_VOID_HOME`
-- `CONTIX_KIRO_IDE_HOME`
-- `CONTIX_ANTIGRAVITY_IDE_HOME`, `CONTIX_ANTIGRAVITY_EXTENSIONS_HOME`
-
-Editor `*_DATA_HOME` defaults are platform aware: `~/.config/<Product>` on
-Linux, `~/Library/Application Support/<Product>` on macOS and
-`%APPDATA%\<Product>` on Windows.
 
 ---
 
@@ -188,24 +179,22 @@ Everything below the configured Gemini/Antigravity state root is synced,
 including global rules, authentication, installation IDs, artifacts, knowledge,
 conversations, MCP configuration, locks, temporary data, logs and caches.
 
-### VS Code-family editors
+### OpenClaw (`~/.openclaw`)
 
-The following product groups expand into every listed root:
+The complete OpenClaw mutable state root is synced: `openclaw.json`, `.env`,
+credentials, secrets, per-agent state, SQLite databases, sessions, transcripts,
+memories, skills, cron/automation data, sandboxes and workspaces. The official
+`OPENCLAW_STATE_DIR` override takes precedence. `OPENCLAW_HOME` changes the base
+home used for defaults, and a non-default `OPENCLAW_PROFILE` resolves to
+`~/.openclaw-<profile>`.
 
-| Group | Application data | Additional state |
-|---|---|---|
-| `cursor` | Cursor | `~/.cursor` |
-| `windsurf` | Windsurf | `~/.codeium/windsurf`, `~/.windsurf` |
-| `vscode` | Code | `~/.vscode` |
-| `vscodium` | VSCodium | `~/.vscode-oss` |
-| `void` | Void | `~/.void` |
-| `kiro` | Kiro | `~/.kiro` |
-| `antigravity` | Antigravity | `~/.gemini`, `~/.antigravity` |
+### IDE state is excluded
 
-Application-data roots contain settings, histories, workspace/global storage,
-authentication, caches and extension state. Home roots contain agent config,
-rules, MCP settings, installed extensions and related runtime data. As with all
-targets, every regular file and symlink is included.
+Cursor, Windsurf, VS Code, VSCodium, Void, Kiro IDE and Antigravity IDE
+application data, extensions, caches and workspace/global storage are not
+registered targets. On the first collection after upgrading, contix removes
+their retired bundles from the sync repo and commits those deletions. It never
+removes the applications' local files.
 
 ### SSH configuration (`~/.ssh`)
 
@@ -250,11 +239,10 @@ Path rewriting is automatic during `contix pull`.
 │   ├── bundle.tar.gz.part-000 # large bundles are split into 5 MiB parts
 │   ├── bundle.tar.gz.part-001
 │   └── manifest.json
-├── cursor/                   # OS-specific Cursor application data
-├── cursor-home/              # ~/.cursor
 ├── hermes/                   # same bundle + manifest layout
 ├── hosts/
 ├── kiro/
+├── openclaw/
 └── ssh/
 ```
 
@@ -306,12 +294,6 @@ Multiple targets can be selected together:
 
 ```bash
 contix collect --tools kiro,antigravity,ssh,hosts
-```
-
-Editor product names collect all associated roots:
-
-```bash
-contix collect --tools cursor,windsurf
 ```
 
 ---

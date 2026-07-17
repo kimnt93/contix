@@ -90,19 +90,14 @@ func TestHostsTargetOnlyIncludesHostsFile(t *testing.T) {
 	}
 }
 
-func TestVSCodeFamilyTargetsAndGroups(t *testing.T) {
-	for _, name := range []string{
-		"cursor", "cursor-home", "windsurf", "windsurf-agent", "windsurf-home",
-		"vscode", "vscode-home", "vscodium", "vscodium-home",
-		"void", "void-home", "kiro-editor", "antigravity-editor",
-		"antigravity-extensions",
-	} {
-		if _, ok := Lookup(name); !ok {
-			t.Errorf("missing editor target %q", name)
-		}
+func TestRegistryContainsAgentsButNoIDEs(t *testing.T) {
+	want := []string{"antigravity", "claude", "codex", "hermes", "hosts", "kiro", "openclaw", "ssh"}
+	if got := Names(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Names() = %v, want %v", got, want)
 	}
-	group, ok := Group("cursor")
-	if !ok || !reflect.DeepEqual(group, []string{"cursor", "cursor-home"}) {
-		t.Fatalf("cursor group = %v, %v", group, ok)
+	for _, name := range RetiredNames() {
+		if _, ok := Lookup(name); ok {
+			t.Errorf("retired IDE target %q is still registered", name)
+		}
 	}
 }

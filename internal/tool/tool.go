@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"contix/internal/platform"
@@ -40,54 +41,38 @@ type Tool struct {
 // Registry returns all known tools keyed by name.
 func Registry() map[string]Tool {
 	return map[string]Tool{
-		"antigravity":            antigravity(),
-		"antigravity-editor":     editor("antigravity-editor", platform.AntigravityIDEHome, "antigravity", "antigravity"),
-		"antigravity-extensions": editor("antigravity-extensions", platform.AntigravityExtensionsHome, "", "antigravity"),
-		"claude":                 claude(),
-		"codex":                  codex(),
-		"cursor":                 editor("cursor", platform.CursorDataHome, "cursor", "cursor"),
-		"cursor-home":            editor("cursor-home", platform.CursorHome, "", "cursor"),
-		"hermes":                 hermes(),
-		"hosts":                  hosts(),
-		"kiro":                   kiro(),
-		"kiro-editor":            editor("kiro-editor", platform.KiroIDEHome, "kiro", "kiro"),
-		"ssh":                    sshConfig(),
-		"vscode":                 editor("vscode", platform.VSCodeDataHome, "code", "code"),
-		"vscode-home":            editor("vscode-home", platform.VSCodeHome, "", "code"),
-		"vscodium":               editor("vscodium", platform.VSCodiumDataHome, "codium", "codium", "vscodium"),
-		"vscodium-home":          editor("vscodium-home", platform.VSCodiumHome, "", "codium", "vscodium"),
-		"void":                   editor("void", platform.VoidDataHome, "void", "void"),
-		"void-home":              editor("void-home", platform.VoidHome, "", "void"),
-		"windsurf":               editor("windsurf", platform.WindsurfDataHome, "windsurf", "windsurf"),
-		"windsurf-agent":         editor("windsurf-agent", platform.WindsurfAgentHome, "", "windsurf"),
-		"windsurf-home":          editor("windsurf-home", platform.WindsurfHome, "", "windsurf"),
+		"antigravity": antigravity(),
+		"claude":      claude(),
+		"codex":       codex(),
+		"hermes":      hermes(),
+		"hosts":       hosts(),
+		"kiro":        kiro(),
+		"openclaw":    openclaw(),
+		"ssh":         sshConfig(),
 	}
 }
 
 // Names returns the sorted list of known tool names.
 func Names() []string {
-	return []string{
-		"antigravity", "antigravity-editor", "antigravity-extensions",
-		"claude", "codex", "cursor", "cursor-home", "hermes", "hosts",
-		"kiro", "kiro-editor", "ssh", "vscode", "vscode-home",
-		"vscodium", "vscodium-home", "void", "void-home",
-		"windsurf", "windsurf-agent", "windsurf-home",
+	registry := Registry()
+	names := make([]string, 0, len(registry))
+	for name := range registry {
+		names = append(names, name)
 	}
+	sort.Strings(names)
+	return names
 }
 
-// Group expands a product name to every state root associated with it.
-func Group(name string) ([]string, bool) {
-	groups := map[string][]string{
-		"antigravity": {"antigravity", "antigravity-editor", "antigravity-extensions"},
-		"cursor":      {"cursor", "cursor-home"},
-		"kiro":        {"kiro", "kiro-editor"},
-		"vscode":      {"vscode", "vscode-home"},
-		"vscodium":    {"vscodium", "vscodium-home"},
-		"void":        {"void", "void-home"},
-		"windsurf":    {"windsurf", "windsurf-agent", "windsurf-home"},
+// RetiredNames are old IDE targets removed from automatic collection. Their
+// bundles are deleted from the sync repo on the next collect, never from the
+// application's local state directory.
+func RetiredNames() []string {
+	return []string{
+		"antigravity-editor", "antigravity-extensions",
+		"cursor", "cursor-home", "kiro-editor",
+		"vscode", "vscode-home", "vscodium", "vscodium-home",
+		"void", "void-home", "windsurf", "windsurf-agent", "windsurf-home",
 	}
-	items, ok := groups[name]
-	return items, ok
 }
 
 // Lookup returns a tool by name.
@@ -160,16 +145,21 @@ func antigravity() Tool {
 	}
 }
 
+func openclaw() Tool {
+	return Tool{
+		Name:      "openclaw",
+		Home:      platform.OpenClawHome,
+		Binary:    "openclaw",
+		Processes: []string{"openclaw", "openclaw-gatewa", "openclaw-gateway"},
+	}
+}
+
 func sshConfig() Tool {
 	return Tool{
 		Name:   "ssh",
 		Home:   platform.SSHHome,
 		Binary: "ssh",
 	}
-}
-
-func editor(name string, home func() string, binary string, processes ...string) Tool {
-	return Tool{Name: name, Home: home, Binary: binary, Processes: processes}
 }
 
 func hosts() Tool {

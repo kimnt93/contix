@@ -1,9 +1,8 @@
 - [x] Sync every regular file and symlink under each configured target root
-- [x] Sync Codex, Claude Code, Hermes, Kiro and Google Antigravity state
-- [x] Sync Cursor application data plus its complete ~/.cursor home
-- [x] Sync Windsurf, VS Code, VSCodium and Void state and extensions
-- [x] Sync Kiro and Antigravity IDE application data and extensions
-- [x] Expand editor product names to every associated state root automatically
+- [x] Sync Codex, Claude Code, Hermes, Kiro and Google Antigravity agent state
+- [x] Sync complete OpenClaw config, credentials, agents, sessions and workspaces
+- [x] Exclude IDE application data, extensions, caches and workspace storage
+- [x] Remove retired IDE bundles from the sync repo on the next collection
 - [x] Sync complete SSH state including keys, known hosts and backups
 - [x] Sync the system hosts file with permission-safe staging
 - [x] Preserve previous snapshots when a target is missing

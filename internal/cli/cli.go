@@ -20,7 +20,7 @@ import (
 // -ldflags "-X contix/internal/cli.Version=x.y.z".
 var Version = releaseinfo.Version()
 
-const usage = `contix — sync coding-agent, editor and machine state to one GitHub repo.
+const usage = `contix — sync coding-agent and portable machine state to one GitHub repo.
 
 USAGE
   contix <command> [flags]
@@ -210,7 +210,7 @@ func writeRepoReadme(dir string) {
 	_ = os.WriteFile(readme, []byte(
 		"# contix sync repo\n\n"+
 			"This repository is managed by [contix](https://github.com/). It stores the\n"+
-			"latest snapshot of coding-agent, editor, SSH and hosts state.\n\n"+
+			"latest snapshot of coding-agent, SSH and hosts state.\n\n"+
 			"Do not edit by hand. Use `contix collect`, `contix push` and `contix pull`.\n"), 0o644)
 }
 
@@ -239,21 +239,15 @@ func parseTools(csv string) ([]tool.Tool, error) {
 		if name == "" {
 			continue
 		}
-		names := []string{name}
-		if group, ok := tool.Group(name); ok {
-			names = group
+		if seen[name] {
+			continue
 		}
-		for _, targetName := range names {
-			if seen[targetName] {
-				continue
-			}
-			t, ok := tool.Lookup(targetName)
-			if !ok {
-				return nil, fmt.Errorf("unknown target %q (known: %s)", name, strings.Join(tool.Names(), ", "))
-			}
-			seen[targetName] = true
-			out = append(out, t)
+		t, ok := tool.Lookup(name)
+		if !ok {
+			return nil, fmt.Errorf("unknown target %q (known: %s)", name, strings.Join(tool.Names(), ", "))
 		}
+		seen[name] = true
+		out = append(out, t)
 	}
 	return out, nil
 }

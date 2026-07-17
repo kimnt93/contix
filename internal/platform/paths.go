@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // Home returns the current user's home directory.
@@ -86,6 +87,34 @@ func AntigravityHome() string {
 	return filepath.Join(Home(), ".gemini")
 }
 
+// OpenClawHome resolves the complete OpenClaw mutable state directory. The
+// explicit state override wins; otherwise OPENCLAW_HOME replaces the OS home
+// used for defaults, and named profiles use ~/.openclaw-<profile>.
+func OpenClawHome() string {
+	if v := os.Getenv("OPENCLAW_STATE_DIR"); v != "" {
+		return expandHomePath(v)
+	}
+	base := Home()
+	if v := os.Getenv("OPENCLAW_HOME"); v != "" {
+		base = expandHomePath(v)
+	}
+	if profile := os.Getenv("OPENCLAW_PROFILE"); profile != "" && profile != "default" {
+		return filepath.Join(base, ".openclaw-"+profile)
+	}
+	return filepath.Join(base, ".openclaw")
+}
+
+func expandHomePath(value string) string {
+	if value == "~" {
+		return Home()
+	}
+	prefix := "~" + string(filepath.Separator)
+	if strings.HasPrefix(value, prefix) {
+		return filepath.Join(Home(), strings.TrimPrefix(value, prefix))
+	}
+	return value
+}
+
 // SSHHome resolves the user's SSH configuration directory. CONTIX_SSH_HOME is
 // primarily useful for non-standard setups and isolated testing.
 func SSHHome() string {
@@ -114,59 +143,4 @@ func HostsDir() string {
 // file cannot be replaced without administrator privileges.
 func HostsStagingDir() string {
 	return filepath.Join(ConfigDir(), "pending", "hosts")
-}
-
-// editorDataDir resolves the Electron/VS Code-style application data directory
-// used for settings, workspace state, histories, caches and authentication.
-func editorDataDir(envName, product string) string {
-	if v := os.Getenv(envName); v != "" {
-		return v
-	}
-	switch runtime.GOOS {
-	case "darwin":
-		return filepath.Join(Home(), "Library", "Application Support", product)
-	case "windows":
-		base := os.Getenv("APPDATA")
-		if base == "" {
-			base = os.Getenv("AppData")
-		}
-		if base == "" {
-			base = filepath.Join(Home(), "AppData", "Roaming")
-		}
-		return filepath.Join(base, product)
-	default:
-		base := os.Getenv("XDG_CONFIG_HOME")
-		if base == "" {
-			base = filepath.Join(Home(), ".config")
-		}
-		return filepath.Join(base, product)
-	}
-}
-
-func editorHome(envName, dir string) string {
-	if v := os.Getenv(envName); v != "" {
-		return v
-	}
-	return filepath.Join(Home(), dir)
-}
-
-func CursorDataHome() string   { return editorDataDir("CONTIX_CURSOR_DATA_HOME", "Cursor") }
-func CursorHome() string       { return editorHome("CONTIX_CURSOR_HOME", ".cursor") }
-func WindsurfDataHome() string { return editorDataDir("CONTIX_WINDSURF_DATA_HOME", "Windsurf") }
-func WindsurfHome() string     { return editorHome("CONTIX_WINDSURF_HOME", ".windsurf") }
-func WindsurfAgentHome() string {
-	return editorHome("CONTIX_WINDSURF_AGENT_HOME", filepath.Join(".codeium", "windsurf"))
-}
-func VSCodeDataHome() string   { return editorDataDir("CONTIX_VSCODE_DATA_HOME", "Code") }
-func VSCodeHome() string       { return editorHome("CONTIX_VSCODE_HOME", ".vscode") }
-func VSCodiumDataHome() string { return editorDataDir("CONTIX_VSCODIUM_DATA_HOME", "VSCodium") }
-func VSCodiumHome() string     { return editorHome("CONTIX_VSCODIUM_HOME", ".vscode-oss") }
-func VoidDataHome() string     { return editorDataDir("CONTIX_VOID_DATA_HOME", "Void") }
-func VoidHome() string         { return editorHome("CONTIX_VOID_HOME", ".void") }
-func KiroIDEHome() string      { return editorDataDir("CONTIX_KIRO_IDE_HOME", "Kiro") }
-func AntigravityIDEHome() string {
-	return editorDataDir("CONTIX_ANTIGRAVITY_IDE_HOME", "Antigravity")
-}
-func AntigravityExtensionsHome() string {
-	return editorHome("CONTIX_ANTIGRAVITY_EXTENSIONS_HOME", ".antigravity")
 }

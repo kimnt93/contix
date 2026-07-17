@@ -4,9 +4,10 @@
 
 `contix` snapshots the state of [Codex](https://github.com/openai/codex),
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Hermes Agent,
-[Kiro](https://kiro.dev/) and [Google Antigravity](https://antigravity.google/),
-along with Cursor, Windsurf, VS Code, VSCodium, Void, SSH state and the system
-hosts file. It compresses everything into a single git repo you own. On a new
+[Kiro](https://kiro.dev/), [Google Antigravity](https://antigravity.google/) and
+[OpenClaw](https://openclaw.ai/), along with SSH state and the system hosts file.
+IDE application data, extensions, caches and workspace storage are not synced.
+Everything selected is compressed into a single git repo you own. On a new
 machine, one pull restores the available state so you can pick up where you
 left off.
 
@@ -33,10 +34,10 @@ Moving to a new laptop means losing your agents' accumulated memory and your
 carefully tuned settings. Existing dotfile/sync tools compress and upload files,
 but none understand multiple AI coding agents. `contix` does:
 
-- **Agent and editor coverage** — Codex, Claude Code, Hermes, Kiro, Antigravity,
-  Cursor, Windsurf, VS Code, VSCodium, Void, SSH state and hosts are collected
-  together. Every regular file and symlink below each configured root is
-  included, without credential/cache/runtime exclusion lists.
+- **Agent-only coverage** — Codex, Claude Code, Hermes, Kiro, Antigravity and
+  OpenClaw agent state are collected together with SSH and hosts. IDE state is
+  deliberately excluded. Every regular file and symlink below each configured
+  agent root is included, without credential/cache/runtime exclusion lists.
 - **One repo, latest wins** — everything lands in a single git repo that always
   holds the latest snapshot. No servers, no accounts, no lock-in.
 - **GitHub-size safe** — archives use maximum gzip compression and are split
@@ -60,7 +61,7 @@ make upgrade      # later: fast-forward this checkout and reinstall latest
 Both commands print the installed version and its feature checklist. Release
 metadata is kept in two easy-to-edit files:
 
-- [`release/VERSION`](release/VERSION) — one version string, such as `0.7.0`
+- [`release/VERSION`](release/VERSION) — one version string, such as `0.9.0`
 - [`release/NOTES`](release/NOTES) — one `- [x]` line per shipped feature
 
 The files are embedded into the binary during the build, so they are not needed
@@ -134,14 +135,9 @@ Optional collection filter:
   collecting all targets.
 - `contix collect --tools codex --force-close` — stop and collect only Codex.
 
-`--force-close` may terminate active sessions and discard unsaved editor work,
-so it is never enabled by default. Applications are asked to exit first and are
-forcibly terminated after two seconds if they remain running.
-
-Editor names are groups. For example, `contix collect --tools cursor` collects
-both Cursor's OS-specific application data and its complete `~/.cursor` home.
-The same expansion applies to `windsurf`, `vscode`, `vscodium`, `void`, `kiro`
-and `antigravity`.
+`--force-close` may terminate active agent sessions, so it is never enabled by
+default. Applications are asked to exit first and are forcibly terminated after
+two seconds if they remain running.
 
 `contix pull` protects differing local files by reporting conflicts and leaving
 that target unchanged. Use `contix pull --ignore` when you intentionally want
@@ -179,15 +175,15 @@ the Gemini/Antigravity state root, including global rules, authentication,
 installation IDs, artifacts, knowledge, conversations, MCP configuration,
 temporary files, locks, logs and caches.
 
-**VS Code-family AI editors:** Cursor, Windsurf, VS Code, VSCodium and Void each
-sync two roots: the OS-specific application-data directory containing user and
-workspace state, plus the editor's home/extensions directory. Windsurf also
-syncs `~/.codeium/windsurf` for Cascade/MCP agent state. Kiro and Antigravity
-add their IDE application data; Antigravity also adds `~/.antigravity`.
+**OpenClaw** (`~/.openclaw`, or `$OPENCLAW_STATE_DIR`): everything under its
+mutable state root, including `openclaw.json`, credentials, secrets, per-agent
+state, SQLite stores, sessions, transcripts, memories, skills, automation and
+workspaces. `OPENCLAW_HOME` and named profiles are also honored.
 
-Missing editors are skipped without deleting an older snapshot. They are
-restored automatically when their bundle exists, even if the editor has not yet
-created its local directories.
+**IDEs are not synced:** Cursor, Windsurf, VS Code, VSCodium, Void, Kiro IDE and
+Antigravity IDE application data/extensions are excluded. Upgrading to this
+version removes their old top-level bundles from the sync repository during the
+next `contix collect`; it never deletes local IDE files.
 
 **SSH** (`~/.ssh`, or `$CONTIX_SSH_HOME`): everything, including configuration,
 private/public keys, `known_hosts`, authorized keys and backup directories.

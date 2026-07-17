@@ -10,6 +10,7 @@ import (
 	"contix/internal/gitutil"
 	"contix/internal/procstop"
 	"contix/internal/syncer"
+	"contix/internal/tool"
 )
 
 func cmdCollect(args []string) int {
@@ -32,6 +33,10 @@ func cmdCollect(args []string) int {
 	if err := ensureRepo(cfg); err != nil {
 		return fail(err)
 	}
+	tls, err := parseTools(*tools)
+	if err != nil {
+		return fail(err)
+	}
 	legacyGit := filepath.Join(cfg.RepoPath, "git")
 	if _, err := os.Stat(legacyGit); err == nil {
 		if err := os.RemoveAll(legacyGit); err != nil {
@@ -39,11 +44,14 @@ func cmdCollect(args []string) int {
 		}
 		fmt.Println("Removed legacy git working-repository snapshots.")
 	}
-
-	tls, err := parseTools(*tools)
+	removedIDE, err := removeRetiredSnapshots(cfg.RepoPath)
 	if err != nil {
 		return fail(err)
 	}
+	if removedIDE > 0 {
+		fmt.Printf("Removed %d retired IDE snapshot(s) from the sync repo.\n", removedIDE)
+	}
+
 	if *forceClose {
 		var processes []string
 		for _, t := range tls {
@@ -100,6 +108,24 @@ func cmdCollect(args []string) int {
 		fmt.Println("Run 'contix push' to upload the collected state.")
 	}
 	return 0
+}
+
+func removeRetiredSnapshots(repoPath string) (int, error) {
+	removed := 0
+	for _, name := range tool.RetiredNames() {
+		retired := filepath.Join(repoPath, name)
+		if _, err := os.Lstat(retired); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return removed, fmt.Errorf("inspect retired IDE snapshot %s: %w", name, err)
+		}
+		if err := os.RemoveAll(retired); err != nil {
+			return removed, fmt.Errorf("remove retired IDE snapshot %s: %w", name, err)
+		}
+		removed++
+	}
+	return removed, nil
 }
 
 func cmdPush(args []string) int {
