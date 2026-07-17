@@ -210,8 +210,9 @@ exceeds 5 MiB, contix writes `bundle.tar.gz.part-000`, `part-001`, and so on.
   the remote's Git authentication itself.
 - Stop synced applications before `collect` when possible, or explicitly use
   `contix collect --force-close`. Files that disappear during collection are
-  omitted because they no longer exist; permission and other read errors remain
-  fatal.
+  omitted because they no longer exist. Transient permission failures from
+  heartbeat/lock creation are retried for two seconds; stable permission and
+  other read errors remain fatal.
 
 ---
 

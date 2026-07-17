@@ -75,8 +75,9 @@ applications are closed. This can terminate active sessions and discard unsaved
 agent work, so the option is never implicit.
 
 Temporary paths that disappear between discovery and compression are omitted:
-there are no remaining bytes to archive. Other failures, including permission
-errors and unreadable existing files, still stop the collection.
+there are no remaining bytes to archive. Permission failures are retried for
+two seconds so short-lived mode changes on heartbeat and lock files can settle.
+An existing file that remains unreadable still stops the collection.
 
 ### `contix push`
 
@@ -322,6 +323,7 @@ keeps the local file untouched for review.
 target is not modified. Review the paths, or use `contix pull --ignore` to
 explicitly overwrite them with the synced snapshot.
 
-**Collection fails on a runtime/permission file** — all-files mode refuses to
-silently omit it. Stop the related application or correct the file permissions,
-then run `contix collect` again.
+**Collection fails on a runtime/permission file** — transient permission races
+are retried for two seconds, and files deleted during that window are safely
+omitted. A file that still exists but remains unreadable is not silently lost:
+stop the related application or correct its permissions, then collect again.

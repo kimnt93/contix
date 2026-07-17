@@ -2,9 +2,11 @@ package archive
 
 import (
 	"crypto/rand"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCreateExtractVerifyRoundTrip(t *testing.T) {
@@ -113,6 +115,76 @@ func TestCreateSkipsFileThatDisappearsAfterDiscovery(t *testing.T) {
 	}
 	if len(m.Files) != 1 || m.Files[0].Path != "stable.txt" {
 		t.Fatalf("manifest files = %#v, want only stable.txt", m.Files)
+	}
+}
+
+func TestCreateRetriesPermissionUntilRuntimeFileDisappears(t *testing.T) {
+	src := t.TempDir()
+	writeFileT(t, filepath.Join(src, "stable.txt"), "kept")
+	heartbeat := filepath.Join(src, "ticker_heartbeat")
+	writeFileT(t, heartbeat, "temporary")
+
+	oldOpen := openStageSource
+	oldRetries := stagePermissionRetries
+	oldDelay := stagePermissionRetryDelay
+	defer func() {
+		openStageSource = oldOpen
+		stagePermissionRetries = oldRetries
+		stagePermissionRetryDelay = oldDelay
+	}()
+	stagePermissionRetries = 2
+	stagePermissionRetryDelay = 0
+	attempts := 0
+	openStageSource = func(path string) (*os.File, error) {
+		if path != heartbeat {
+			return os.Open(path)
+		}
+		attempts++
+		if attempts == 1 {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			return nil, &os.PathError{Op: "open", Path: path, Err: os.ErrPermission}
+		}
+		return os.Open(path)
+	}
+
+	bundle := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	m, err := Create(src, []string{"stable.txt", "ticker_heartbeat"}, bundle, NewManifest("test", "", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 {
+		t.Fatalf("open attempts = %d, want 2", attempts)
+	}
+	if len(m.Files) != 1 || m.Files[0].Path != "stable.txt" {
+		t.Fatalf("manifest files = %#v, want only stable.txt", m.Files)
+	}
+}
+
+func TestOpenStageFileKeepsStablePermissionFailureFatal(t *testing.T) {
+	oldOpen := openStageSource
+	oldRetries := stagePermissionRetries
+	oldDelay := stagePermissionRetryDelay
+	defer func() {
+		openStageSource = oldOpen
+		stagePermissionRetries = oldRetries
+		stagePermissionRetryDelay = oldDelay
+	}()
+	stagePermissionRetries = 2
+	stagePermissionRetryDelay = time.Nanosecond
+	attempts := 0
+	openStageSource = func(path string) (*os.File, error) {
+		attempts++
+		return nil, &os.PathError{Op: "open", Path: path, Err: os.ErrPermission}
+	}
+
+	_, err := openStageFile("persistent-secret")
+	if !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("error = %v, want permission denied", err)
+	}
+	if attempts != 3 {
+		t.Fatalf("open attempts = %d, want 3", attempts)
 	}
 }
 

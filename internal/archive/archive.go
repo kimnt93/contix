@@ -11,7 +11,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
+
+// Hermes and other active agents may briefly create mode-000 heartbeat/lock
+// files before replacing or deleting them. Retry only permission failures;
+// stable unreadable files still fail after this bounded window.
+var stagePermissionRetries = 40
+var stagePermissionRetryDelay = 50 * time.Millisecond
+var openStageSource = os.Open
 
 // Create bundles the given relative files (rooted at srcRoot) into a gzip'd tar
 // at bundlePath and returns a completed manifest. Files are stored using their
@@ -228,7 +236,7 @@ func removeBundleOutputs(bundlePath string) error {
 // stageFile takes a bounded point-in-time copy before writing a tar header. If
 // the source disappears or shrinks while active, no partial entry is emitted.
 func stageFile(abs string) (os.FileInfo, *os.File, error) {
-	src, err := os.Open(abs)
+	src, err := openStageFile(abs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -257,6 +265,22 @@ func stageFile(abs string) (os.FileInfo, *os.File, error) {
 		return nil, nil, err
 	}
 	return info, staged, nil
+}
+
+func openStageFile(abs string) (*os.File, error) {
+	var lastErr error
+	for attempt := 0; attempt <= stagePermissionRetries; attempt++ {
+		src, err := openStageSource(abs)
+		if err == nil {
+			return src, nil
+		}
+		lastErr = err
+		if !os.IsPermission(err) || attempt == stagePermissionRetries {
+			return nil, err
+		}
+		time.Sleep(stagePermissionRetryDelay)
+	}
+	return nil, lastErr
 }
 
 // writeFile streams one staged file into the tar writer and returns its SHA-256.
