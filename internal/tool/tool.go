@@ -1,4 +1,4 @@
-// Package tool defines the syncable tools (Codex, Claude Code): where their
+// Package tool defines the syncable tools (Codex, Claude Code, Hermes): where their
 // state lives, which paths are worth syncing, and how to detect their version.
 package tool
 
@@ -31,12 +31,13 @@ func Registry() map[string]Tool {
 	return map[string]Tool{
 		"codex":  codex(),
 		"claude": claude(),
+		"hermes": hermes(),
 	}
 }
 
 // Names returns the sorted list of known tool names.
 func Names() []string {
-	return []string{"claude", "codex"}
+	return []string{"claude", "codex", "hermes"}
 }
 
 // Lookup returns a tool by name.
@@ -58,6 +59,11 @@ func codex() Tool {
 			"logs_*.sqlite",
 			// SQLite shared-memory sidecar; rebuilt on open, unsafe to copy.
 			"*.sqlite-shm",
+			// Runtime scratch data and locks are short-lived and can disappear
+			// while an archive is being built.
+			"tmp/",
+			".tmp/",
+			"*.lock",
 			// Nested git repos would corrupt the sync repo if embedded.
 			".git",
 		},
@@ -88,6 +94,8 @@ func claude() Tool {
 			".credentials.json",
 			// SQLite shared-memory sidecar; rebuilt on open, unsafe to copy.
 			"*.sqlite-shm",
+			"tmp/",
+			"*.lock",
 			// Nested git repos (e.g. plugin marketplaces) would corrupt the
 			// sync repo if embedded.
 			".git",
@@ -96,6 +104,40 @@ func claude() Tool {
 			// Claude stores no reliable version file; leave to CLI probing.
 			return ""
 		},
+	}
+}
+
+func hermes() Tool {
+	return Tool{
+		Name: "hermes",
+		Home: platform.HermesHome,
+		Exclude: []string{
+			// Authentication and provider secrets stay machine-local.
+			"auth.json",
+			"auth.lock",
+			".env",
+			".credentials.json",
+			"pairing/",
+			// The installed source tree, runtimes and generated data are large and
+			// reproducible. User config, SOUL, memories, skills, sessions and cron
+			// definitions remain included.
+			"hermes-agent/",
+			"bin/",
+			"cache/",
+			"logs/",
+			"audio_cache/",
+			"image_cache/",
+			"sandboxes/",
+			"cron/output/",
+			"*_cache.json",
+			"*.lock",
+			"*.sqlite-shm",
+			"*.sqlite-wal",
+			"*.db-shm",
+			"*.db-wal",
+			".git",
+		},
+		Version: func(home string) string { return "" },
 	}
 }
 

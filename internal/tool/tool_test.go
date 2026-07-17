@@ -40,4 +40,10 @@ func TestCredentialsAlwaysExcluded(t *testing.T) {
 	if !matchAny(".git", codex().Exclude) {
 		t.Fatal("nested .git must match an exclude pattern")
 	}
+	if !matchAny("auth.json", hermes().Exclude) || !matchAny(".env", hermes().Exclude) {
+		t.Fatal("hermes credentials must match exclude patterns")
+	}
+	if !matchAny("hermes-agent/venv/bin/python", hermes().Exclude) {
+		t.Fatal("hermes installation tree must be excluded")
+	}
 }

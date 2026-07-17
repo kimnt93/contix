@@ -57,3 +57,11 @@ func ClaudeHome() string {
 	}
 	return filepath.Join(Home(), ".claude")
 }
+
+// HermesHome resolves the Hermes Agent state directory, honouring HERMES_HOME.
+func HermesHome() string {
+	if v := os.Getenv("HERMES_HOME"); v != "" {
+		return v
+	}
+	return filepath.Join(Home(), ".hermes")
+}

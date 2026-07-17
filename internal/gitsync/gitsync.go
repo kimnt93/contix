@@ -154,11 +154,14 @@ func Snapshot(repoRoot, homeDir, repoPath string) (SnapshotResult, error) {
 	untrackedPath := filepath.Join(destDir, untrackedName)
 	if len(untracked) > 0 {
 		m := archive.NewManifest("untracked", "", abs)
-		if _, err := archive.Create(abs, untracked, untrackedPath, m); err != nil {
+		m, err = archive.Create(abs, untracked, untrackedPath, m)
+		if err != nil {
 			return res, fmt.Errorf("%s: bundle untracked: %w", st.Name, err)
 		}
-		st.Untracked = untracked
-		res.Untracked = len(untracked)
+		for _, fe := range m.Files {
+			st.Untracked = append(st.Untracked, fe.Path)
+		}
+		res.Untracked = len(st.Untracked)
 	} else {
 		_ = os.Remove(untrackedPath)
 	}

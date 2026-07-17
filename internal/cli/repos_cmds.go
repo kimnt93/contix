@@ -15,6 +15,7 @@ USAGE
   contix repos add <path>...    Track one or more git repositories
   contix repos remove <path>    Stop tracking a repository
   contix repos list             Show tracked repositories
+  contix repos scan [root]...   Find and track repositories now
 `
 
 func cmdRepos(args []string) int {
@@ -34,6 +35,8 @@ func cmdRepos(args []string) int {
 		return reposRemove(cfg, rest)
 	case "list", "ls":
 		return reposList(cfg)
+	case "scan":
+		return reposScan(cfg, rest)
 	case "-h", "--help", "help":
 		fmt.Print(reposUsage)
 		return 0
@@ -42,6 +45,25 @@ func cmdRepos(args []string) int {
 		fmt.Print(reposUsage)
 		return 2
 	}
+}
+
+func reposScan(cfg config.Config, roots []string) int {
+	added, err := discoverAndAdd(&cfg, roots)
+	if err != nil {
+		return fail(err)
+	}
+	if len(added) == 0 {
+		fmt.Println("No new git repositories found.")
+		return 0
+	}
+	if err := cfg.Save(); err != nil {
+		return fail(err)
+	}
+	for _, p := range added {
+		fmt.Println("tracking", p)
+	}
+	fmt.Printf("Added %d repositories.\n", len(added))
+	return 0
 }
 
 func reposAdd(cfg config.Config, paths []string) int {

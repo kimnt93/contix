@@ -14,6 +14,7 @@ import (
 	"contix/internal/pathrewrite"
 	"contix/internal/platform"
 	"contix/internal/syncer"
+	"contix/internal/tool"
 )
 
 // mapList collects repeatable --map OLD=NEW flags.
@@ -45,6 +46,22 @@ func cmdPush(args []string) int {
 	}
 	if err := ensureRepo(cfg); err != nil {
 		return fail(err)
+	}
+	if !*noRepos && cfg.AutoDiscover {
+		added, err := discoverAndAdd(&cfg, nil)
+		if err != nil {
+			return fail(fmt.Errorf("discover git repos: %w", err))
+		}
+		if len(added) > 0 {
+			if err := cfg.Save(); err != nil {
+				return fail(err)
+			}
+			fmt.Printf("Discovered %d new git repositories:\n", len(added))
+			for _, p := range added {
+				fmt.Printf("  + %s\n", p)
+			}
+			fmt.Println()
+		}
 	}
 
 	tls, err := parseTools(*tools)
@@ -189,6 +206,7 @@ func cmdPull(args []string) int {
 		if len(states) > 0 {
 			fmt.Println("\nRestoring git working repos:")
 			home := platform.Home()
+			configChanged := false
 			for _, st := range states {
 				res, err := gitsync.Restore(cfg.RepoPath, home, st)
 				if err != nil {
@@ -215,6 +233,14 @@ func cmdPull(args []string) int {
 				}
 				for _, w := range res.Warnings {
 					fmt.Printf("           ! %s\n", w)
+				}
+				if res.Path != "" && (gitutil.Repo{Dir: res.Path}).IsRepo() && cfg.AddRepo(res.Path) {
+					configChanged = true
+				}
+			}
+			if configChanged {
+				if err := cfg.Save(); err != nil {
+					return fail(err)
 				}
 			}
 		}
@@ -330,7 +356,7 @@ func cmdVerify(args []string) int {
 // toolNamesInRepo returns the tool names that have a directory in the sync repo.
 func toolNamesInRepo(cfg config.Config) []string {
 	var out []string
-	for _, name := range []string{"claude", "codex"} {
+	for _, name := range tool.Names() {
 		if _, err := os.Stat(filepath.Join(cfg.RepoPath, name, archive.ManifestName)); err == nil {
 			out = append(out, name)
 		}

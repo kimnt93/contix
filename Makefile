@@ -51,7 +51,7 @@ ifneq ($(PREFIX),)
   BINDIR := $(PREFIX)/bin
 endif
 
-.PHONY: all build install test vet fmt fmt-check tidy clean release
+.PHONY: all build install upgrade test vet fmt fmt-check tidy clean release
 
 all: build
 
@@ -68,6 +68,15 @@ install:
 	@echo "installed $(PREBUILT) -> $(BINDIR)/$(BINARY)$(EXT)"
 	@case ":$(PATH):" in *":$(BINDIR):"*) ;; \
 	  *) echo "note: $(BINDIR) is not on your PATH; add it to use 'contix'." ;; esac
+
+## upgrade: update this checkout and install the latest committed prebuilt binary
+upgrade:
+	@git diff --quiet && git diff --cached --quiet || { \
+	  echo "error: this checkout has local changes; commit or stash them before upgrading"; \
+	  exit 1; \
+	}
+	git pull --ff-only
+	@$(MAKE) install BINDIR="$(BINDIR)"
 
 ## build: compile the binary for the host platform into ./$(BINARY) (needs Go)
 build:

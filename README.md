@@ -2,10 +2,10 @@
 
 **Sync your AI coding agents and git working state across machines through one GitHub repo.**
 
-`contix` snapshots the state of [Codex](https://github.com/openai/codex) and
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code) — their memory,
-settings, rules, skills and session history — together with the branches and
-uncommitted work in your git repositories, compresses it, and pushes it to a
+`contix` snapshots the state of [Codex](https://github.com/openai/codex),
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code), and Hermes Agent
+— their memory, settings, rules, skills and session history — together with the
+branches and uncommitted work in your git repositories, compresses it, and pushes it to a
 single git repo you own. On a new machine you run one command to pull it all
 back and pick up exactly where you left off.
 
@@ -20,7 +20,8 @@ your existing `git`, so it reuses your SSH keys, credentials and identity.
   ┌──────────────┐                                     ┌──────────────┐
   │ ~/.codex     │──┐        ┌───────────┐        ┌──▶ │ ~/.codex     │
   │ ~/.claude    │──┼─push──▶│ one repo  │──pull──┤    │ ~/.claude    │
-  │ ~/code/*     │──┘        │ (latest)  │        └──▶ │ ~/code/*     │
+  │ ~/.hermes    │──┤        │ (latest)  │        ├──▶ │ ~/.hermes    │
+  │ ~/code/*     │──┘        │           │        └──▶ │ ~/code/*     │
   └──────────────┘           └───────────┘             └──────────────┘
 ```
 
@@ -33,11 +34,13 @@ carefully tuned settings, and the half-finished branches scattered across your
 projects. Existing dotfile/sync tools compress and upload files, but none
 understand multiple AI coding agents. `contix` does:
 
-- **Codex + Claude Code aware** — it syncs each tool's entire state directory
+- **Codex + Claude Code + Hermes aware** — it syncs portable tool state
   (memory, rules, skills, sessions, settings and more), skipping only what's
   unsafe or pointless: machine-locked credentials, huge regenerating telemetry
   logs, and nested `.git` repos.
-- **Git working state** — it records each tracked repo's remote, all local
+- **Automatic git discovery** — every push scans configured roots (your home by
+  default), so newly created or cloned repositories are registered without a
+  manual setup step. It records each repo's remote, all local
   branches, the current branch, uncommitted changes, and untracked files, then
   reconstructs them on the other machine.
 - **One repo, latest wins** — everything lands in a single git repo that always
@@ -55,6 +58,7 @@ so **you don't need Go to install** — just `make`, `git` and a shell.
 ```bash
 git clone https://github.com/kimnt93/contix.git && cd contix
 make install      # installs the prebuilt binary for your OS/arch
+make upgrade      # later: fast-forward this checkout and reinstall latest
 ```
 
 `make install` auto-detects your platform (Linux/macOS/Windows, amd64/arm64),
@@ -85,9 +89,8 @@ Create an **empty, private** git repo on GitHub (e.g. `you/dev-state`), then:
 
 ```bash
 contix init --remote git@github.com:you/dev-state.git
-contix repos add ~/code/project-a ~/code/project-b   # track your working repos
-contix push                                           # collect + commit locally
-contix push --push                                    # ...and upload to GitHub
+contix push          # auto-find repos, collect tool state, commit locally
+contix push --push   # ...and upload to GitHub
 ```
 
 The remote may be **SSH** (`git@github.com:you/dev-state.git`) or **HTTPS**
@@ -105,9 +108,9 @@ contix init --remote git@github.com:you/dev-state.git   # clones existing state
 contix pull                                             # restores everything
 ```
 
-Your Codex/Claude memory and settings are back, your projects are cloned to the
-same relative path under your home directory, their branches are recreated, and
-your uncommitted work is reapplied.
+Your Codex/Claude/Hermes memory and settings are back, your projects are cloned
+to the same relative path under your home directory, their branches are
+recreated, and your uncommitted work is reapplied.
 
 ---
 
@@ -121,7 +124,8 @@ your uncommitted work is reapplied.
 | `contix pull` | Pull from the remote and restore state + repos onto this machine. |
 | `contix list` | List what is currently stored in the sync repo. |
 | `contix verify` | Extract and checksum every bundle to confirm integrity. |
-| `contix repos add/remove/list` | Manage tracked git working repositories. |
+| `contix repos scan [root]...` | Find and register git repositories immediately. |
+| `contix repos add/remove/list` | Manually manage tracked git repositories. |
 | `contix doctor` | Diagnose environment and configuration. |
 | `contix version` | Print the version. |
 
@@ -140,8 +144,8 @@ See [docs/usage.md](docs/usage.md) for the full reference and internals.
 
 ## What gets synced
 
-`contix` syncs the **entire** state directory of each tool, skipping only what's
-unsafe or pointless.
+`contix` syncs each tool's portable state, skipping only what's unsafe,
+volatile, or reproducible.
 
 **Codex** (`~/.codex`, or `$CODEX_HOME`): everything — `config.toml`, provider
 configs, `AGENTS.md`, history, rules, skills, memories, sessions, SQLite
@@ -155,9 +159,15 @@ skills, rules, plugins, downloads, backups, and more.
 **Skipped:** `.credentials.json` (credentials), `*.sqlite-shm` sidecars, and
 nested `.git` dirs (e.g. plugin marketplaces).
 
-**Git repos** you track with `contix repos add`: origin URL, all local branches,
-current branch, uncommitted tracked changes (as a patch), and untracked
-non-ignored files.
+**Hermes Agent** (`~/.hermes`, or `$HERMES_HOME`): portable state including
+`config.yaml`, `SOUL.md`, memories, skills, sessions, cron definitions and its
+state database. Credentials (`auth.json`, `.env`), pairing data, caches, logs,
+sandbox state, runtime binaries and the installed `hermes-agent` source/venv are
+skipped.
+
+**Git repos** found automatically (or added with `contix repos add`): origin
+URL, all local branches, current branch, uncommitted tracked changes (as a
+patch), and untracked non-ignored files.
 
 ---
 

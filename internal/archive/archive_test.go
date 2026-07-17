@@ -60,6 +60,19 @@ func TestExtractRejectsZipSlip(t *testing.T) {
 	}
 }
 
+func TestCreateSkipsFileThatDisappearedAfterDiscovery(t *testing.T) {
+	src := t.TempDir()
+	writeFileT(t, filepath.Join(src, "stable.txt"), "kept")
+	bundle := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	m, err := Create(src, []string{"stable.txt", "gone.lock"}, bundle, NewManifest("test", "", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Files) != 1 || m.Files[0].Path != "stable.txt" {
+		t.Fatalf("unexpected manifest: %#v", m.Files)
+	}
+}
+
 func writeFileT(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

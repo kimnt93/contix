@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,14 +18,19 @@ import (
 // at bundlePath and returns a completed manifest. Files are stored using their
 // forward-slash relative paths so archives are portable across OSes.
 func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manifest, error) {
-	if err := os.MkdirAll(filepath.Dir(bundlePath), 0o755); err != nil {
+	bundleDir := filepath.Dir(bundlePath)
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
 		return m, err
 	}
-	f, err := os.Create(bundlePath)
+	// Build beside the destination and publish only after the tarball closes
+	// successfully. A failed collection therefore leaves the last good bundle
+	// untouched.
+	f, err := os.CreateTemp(bundleDir, ".bundle-*.tmp")
 	if err != nil {
 		return m, err
 	}
-	defer f.Close()
+	tmpBundle := f.Name()
+	defer os.Remove(tmpBundle)
 
 	gz := gzip.NewWriter(f)
 	tw := tar.NewWriter(gz)
@@ -34,21 +40,28 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 
 	for _, rel := range rels {
 		abs := filepath.Join(srcRoot, filepath.FromSlash(rel))
-		info, err := os.Stat(abs)
+		entry, staged, err := stageFile(abs)
 		if err != nil {
-			return m, fmt.Errorf("stat %s: %w", rel, err)
+			if os.IsNotExist(err) || errors.Is(err, io.EOF) {
+				// Tool runtimes and git worktrees can delete/truncate temporary or
+				// untracked files after discovery. They are not a reason to fail the
+				// whole snapshot.
+				continue
+			}
+			return m, fmt.Errorf("stage %s: %w", rel, err)
 		}
-		if !info.Mode().IsRegular() {
+		if staged == nil {
 			continue
 		}
-		sum, err := writeFile(tw, abs, rel, info)
+		sum, err := writeFile(tw, staged, rel, entry)
+		staged.Close()
 		if err != nil {
 			return m, fmt.Errorf("archive %s: %w", rel, err)
 		}
 		m.Files = append(m.Files, FileEntry{
 			Path:   rel,
-			Size:   info.Size(),
-			Mode:   uint32(info.Mode().Perm()),
+			Size:   entry.Size(),
+			Mode:   uint32(entry.Mode().Perm()),
 			SHA256: sum,
 		})
 	}
@@ -59,11 +72,62 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 	if err := gz.Close(); err != nil {
 		return m, err
 	}
-	return m, f.Sync()
+	if err := f.Sync(); err != nil {
+		return m, err
+	}
+	if err := f.Close(); err != nil {
+		return m, err
+	}
+	if err := os.Rename(tmpBundle, bundlePath); err != nil {
+		// Windows cannot replace an existing file with Rename. The completed
+		// temp bundle is still safe to publish after removing the old one.
+		if removeErr := os.Remove(bundlePath); removeErr != nil && !os.IsNotExist(removeErr) {
+			return m, err
+		}
+		if err := os.Rename(tmpBundle, bundlePath); err != nil {
+			return m, err
+		}
+	}
+	return m, nil
 }
 
-// writeFile streams one file into the tar writer and returns its SHA-256.
-func writeFile(tw *tar.Writer, abs, rel string, info os.FileInfo) (string, error) {
+// stageFile takes a bounded point-in-time copy before writing a tar header. If
+// the source disappears or shrinks while active, no partial entry is emitted.
+func stageFile(abs string) (os.FileInfo, *os.File, error) {
+	src, err := os.Open(abs)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer src.Close()
+	info, err := src.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return info, nil, nil
+	}
+	staged, err := os.CreateTemp("", "contix-stage-*")
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := io.CopyN(staged, src, info.Size()); err != nil {
+		name := staged.Name()
+		staged.Close()
+		os.Remove(name)
+		return nil, nil, err
+	}
+	if _, err := staged.Seek(0, io.SeekStart); err != nil {
+		name := staged.Name()
+		staged.Close()
+		os.Remove(name)
+		return nil, nil, err
+	}
+	return info, staged, nil
+}
+
+// writeFile streams one staged file into the tar writer and returns its SHA-256.
+func writeFile(tw *tar.Writer, src *os.File, rel string, info os.FileInfo) (string, error) {
+	defer os.Remove(src.Name())
 	hdr := &tar.Header{
 		Name:    rel,
 		Mode:    int64(info.Mode().Perm()),
@@ -73,15 +137,9 @@ func writeFile(tw *tar.Writer, abs, rel string, info os.FileInfo) (string, error
 	if err := tw.WriteHeader(hdr); err != nil {
 		return "", err
 	}
-	src, err := os.Open(abs)
-	if err != nil {
-		return "", err
-	}
-	defer src.Close()
-
 	h := sha256.New()
 	mw := io.MultiWriter(tw, h)
-	if _, err := io.Copy(mw, src); err != nil {
+	if _, err := io.CopyN(mw, src, info.Size()); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil

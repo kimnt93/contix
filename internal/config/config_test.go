@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestAddRemoveRepo(t *testing.T) {
 	var c Config
@@ -22,5 +26,20 @@ func TestAddRemoveRepo(t *testing.T) {
 	}
 	if len(c.Repos) != 1 || c.Repos[0] != "/b" {
 		t.Fatalf("unexpected repos: %v", c.Repos)
+	}
+}
+
+func TestLoadMigratesOldConfigToAutoDiscovery(t *testing.T) {
+	t.Setenv("CONTIX_CONFIG_DIR", t.TempDir())
+	old := []byte(`{"repo_path":"/tmp/sync","branch":"main","home":"/tmp/home"}`)
+	if err := os.WriteFile(filepath.Join(os.Getenv("CONTIX_CONFIG_DIR"), "config.json"), old, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.AutoDiscover || len(c.RepoRoots) != 1 {
+		t.Fatalf("old config was not migrated: %#v", c)
 	}
 }

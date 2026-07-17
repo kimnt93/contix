@@ -22,7 +22,8 @@ This document is the full reference for `contix`. For a quick overview see the
 - **Sync repo** — a single git repository you own (usually private on GitHub)
   that stores the *latest* snapshot of everything. `contix` keeps a local clone
   and pushes/pulls it.
-- **Tools** — the AI coding agents `contix` understands: `codex` and `claude`.
+- **Tools** — the AI coding agents `contix` understands: `codex`, `claude`, and
+  `hermes`.
   Each has a curated include/exclude list so only meaningful state is synced.
 - **Tracked repos** — your own git working repositories whose branches and
   uncommitted work you want to carry between machines.
@@ -46,6 +47,8 @@ Configure `contix` and prepare the local sync repo.
 --remote <url>     Git remote URL of the sync repo
 --branch <name>    Branch to sync on (default: main)
 --auto-push        Push to the remote automatically after every 'push'
+--repo-root <path> Scan this directory for git repos (repeatable; default: home)
+--no-auto-discover Disable automatic git repository discovery
 ```
 
 If `--remote` points at a repo that already contains data, `init` **clones** it,
@@ -71,8 +74,9 @@ sync repo has uncommitted snapshots.
 --no-repos         Skip tracked git working repositories
 ```
 
-Steps: collect each tool's whitelisted files into `tarball + manifest`,
-snapshot each tracked git repo, `git add -A && git commit`, then (with `--push`
+Steps: discover newly created/cloned git repos, collect each tool's portable
+files into `tarball + manifest`, snapshot each tracked git repo,
+`git add -A && git commit`, then (with `--push`
 or `auto_push`) `git pull --rebase` and `git push`.
 
 ### `contix pull`
@@ -106,11 +110,17 @@ manifest SHA-256 digests. Confirms the archives are intact and restorable.
 contix repos add <path>...    Track git repositories (skips non-repos)
 contix repos remove <path>    Stop tracking a repository
 contix repos list             Show tracked repositories and their state
+contix repos scan [root]...   Find and track repositories immediately
 ```
 
 `add` records the repository's top-level directory. If a repo has no `origin`
 remote, `contix` warns you: without a remote its commit history can't be cloned
 on another machine (only its uncommitted/untracked files will be synced).
+
+`push` automatically scans `repo_roots` when `auto_discover` is enabled. The
+default root is your home directory; caches, AI tool installations, dependency
+directories, and contix's own sync repo are pruned. Restored repos are also
+registered in the receiving machine's config.
 
 ### `contix doctor`
 
@@ -137,7 +147,9 @@ Override the whole config directory with `CONTIX_CONFIG_DIR`.
   "remote": "git@github.com:you/dev-state.git",
   "branch": "main",
   "auto_push": false,
+  "auto_discover": true,
   "home": "/home/you",
+  "repo_roots": ["/home/you"],
   "repos": ["/home/you/code/project-a"]
 }
 ```
@@ -146,6 +158,7 @@ Environment overrides for tool locations:
 
 - `CODEX_HOME` — Codex state dir (default `~/.codex`)
 - `CLAUDE_CONFIG_DIR` — Claude Code state dir (default `~/.claude`)
+- `HERMES_HOME` — Hermes Agent state dir (default `~/.hermes`)
 
 ---
 
@@ -167,6 +180,7 @@ Everything is synced **except**:
 - `auth.json`, `.credentials.json` — machine-locked credentials (never synced)
 - `logs_*.sqlite` — large (300MB+) telemetry log that regenerates on its own
 - `*.sqlite-shm` — SQLite shared-memory sidecar, rebuilt on open
+- `tmp/`, `.tmp/`, `*.lock` — volatile runtime scratch files
 - `.git` — nested git repos, which would corrupt the sync repo if embedded
 
 ### Claude Code (`~/.claude`)
@@ -175,8 +189,19 @@ Everything is synced **except**:
 
 - `.credentials.json` — machine-locked credentials (never synced)
 - `*.sqlite-shm` — SQLite shared-memory sidecar, rebuilt on open
+- `tmp/`, `*.lock` — volatile runtime scratch files
 - `.git` — nested git repos (e.g. plugin marketplaces), which would corrupt the
   sync repo if embedded
+
+### Hermes Agent (`~/.hermes`)
+
+Portable config and working context are synced: `config.yaml`, `SOUL.md`,
+memories, skills, sessions, cron definitions and the state database. The
+following are excluded:
+
+- `auth.json`, `auth.lock`, `.env`, `.credentials.json`, `pairing/`
+- `hermes-agent/`, `bin/`, caches, logs and sandbox/runtime data
+- lock files and SQLite sidecars
 
 > To trim large bundles, use `--days N` so old session transcripts under
 > `sessions/`, `archived_sessions/` and `projects/` are dropped. Everything else
@@ -238,6 +263,9 @@ Add extra rules with `--map OLD=NEW` (repeatable), or disable rewriting with
 ├── codex/
 │   ├── bundle.tar.gz
 │   └── manifest.json
+├── hermes/
+│   ├── bundle.tar.gz
+│   └── manifest.json
 └── git/
     └── <name>-<hash>/        # one dir per tracked repo
         ├── state.json        # remote, branches, current branch, HEAD
@@ -262,6 +290,12 @@ contix push --push
 make install
 contix init --remote git@github.com:you/dev-state.git
 contix pull
+```
+
+**Upgrade contix from the checkout**
+
+```bash
+make upgrade
 ```
 
 **Only sync Codex, keep bundles small**

@@ -28,6 +28,11 @@ type Config struct {
 	// Repos are absolute paths to git working repositories whose branches and
 	// uncommitted work should be synced.
 	Repos []string `json:"repos,omitempty"`
+	// AutoDiscover scans RepoRoots on every push and registers newly cloned or
+	// created repositories automatically.
+	AutoDiscover bool `json:"auto_discover"`
+	// RepoRoots are directories searched recursively for git repositories.
+	RepoRoots []string `json:"repo_roots,omitempty"`
 }
 
 // AddRepo records an absolute repo path if not already tracked. Returns false
@@ -61,10 +66,12 @@ func Path() string {
 // Default returns a config populated with sensible defaults.
 func Default() Config {
 	return Config{
-		RepoPath: filepath.Join(platform.ConfigDir(), "repo"),
-		Branch:   "main",
-		AutoPush: false,
-		Home:     platform.Home(),
+		RepoPath:     filepath.Join(platform.ConfigDir(), "repo"),
+		Branch:       "main",
+		AutoPush:     false,
+		Home:         platform.Home(),
+		AutoDiscover: true,
+		RepoRoots:    []string{platform.Home()},
 	}
 }
 
@@ -86,6 +93,16 @@ func Load() (Config, error) {
 	}
 	if c.Branch == "" {
 		c.Branch = "main"
+	}
+	// Existing configs predate automatic discovery. Enable it during migration
+	// unless the field is explicitly present and false.
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(b, &fields)
+	if _, ok := fields["auto_discover"]; !ok {
+		c.AutoDiscover = true
+	}
+	if len(c.RepoRoots) == 0 {
+		c.RepoRoots = []string{platform.Home()}
 	}
 	return c, nil
 }
