@@ -30,7 +30,7 @@ func (m *mapList) Set(v string) error {
 
 func cmdCollect(args []string) int {
 	fs := flag.NewFlagSet("collect", flag.ContinueOnError)
-	tools := fs.String("tools", "", "comma-separated tools to push (default: all)")
+	tools := fs.String("tools", "", "comma-separated tools to collect (default: all)")
 	days := fs.Int("days", 0, "only include session transcripts newer than N days (0 = all)")
 	message := fs.String("message", "", "commit message (default: auto)")
 	if err := fs.Parse(args); err != nil {
