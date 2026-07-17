@@ -1,1 +1,1 @@
-Syncs Claude Code, Codex and Hermes agent state safely; working-repository sync is removed.
+Uses separate collect, push and pull commands for Claude Code, Codex and Hermes state.

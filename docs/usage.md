@@ -24,7 +24,7 @@ This document is the full reference for `contix`. For a quick overview see the
 - **Tools** — the AI coding agents `contix` understands: `codex`, `claude`, and
   `hermes`.
   Each has a curated include/exclude list so only meaningful state is synced.
-- **Snapshot** — one `contix push`: it rebuilds the bundles, commits them to the
+- **Snapshot** — one `contix collect`: it rebuilds the bundles, commits them to the
   sync repo, and optionally pushes to the remote.
 
 `contix` never keeps history of its own; each push overwrites the previous
@@ -43,33 +43,35 @@ Configure `contix` and prepare the local sync repo.
 --repo <path>      Local sync repo directory (default: <config-dir>/repo)
 --remote <url>     Git remote URL of the sync repo
 --branch <name>    Branch to sync on (default: main)
---auto-push        Push to the remote automatically after every 'push'
 ```
 
 If `--remote` points at a repo that already contains data, `init` **clones** it,
 so a new machine starts from your existing state. If the remote is empty (or
 unset), it initialises a fresh local repo.
 
-Re-running `init` updates the configuration in place (e.g. to add a remote or
-turn on auto-push).
+Re-running `init` updates the configuration in place, such as adding a remote.
 
 ### `contix status`
 
 Shows configuration, each tool's detected state directory and file count, and
 whether the sync repo has uncommitted snapshots.
 
-### `contix push`
+### `contix collect`
 
 ```
 --tools <list>     Comma-separated tools to push (default: all)
 --days <N>         Only include session transcripts newer than N days (0 = all)
 --message <msg>    Commit message (default: "contix sync <time> from <host>")
---push             Push to the git remote after committing
 ```
 
 Steps: collect each tool's portable files into `tarball + manifest`, remove any
-legacy working-repository snapshots, run `git add -A && git commit`, then (with
-`--push` or `auto_push`) `git pull --rebase` and `git push`.
+legacy working-repository snapshots, then run `git add -A && git commit` locally.
+
+### `contix push`
+
+Uploads the state previously committed by `contix collect`. Before pushing, it
+pulls and rebases the configured sync branch. It refuses to run when the sync
+repo contains uncommitted changes.
 
 ### `contix pull`
 
@@ -116,7 +118,6 @@ Override the whole config directory with `CONTIX_CONFIG_DIR`.
   "repo_path": "/home/you/.config/contix/repo",
   "remote": "git@github.com:you/dev-state.git",
   "branch": "main",
-  "auto_push": false,
   "home": "/home/you"
 }
 ```
@@ -217,7 +218,8 @@ Add extra rules with `--map OLD=NEW` (repeatable), or disable rewriting with
 **Daily checkpoint before switching machines**
 
 ```bash
-contix push --push
+contix collect
+contix push
 ```
 
 **New laptop setup**
@@ -243,7 +245,8 @@ embedded into the resulting binaries.
 **Only sync Codex, keep bundles small**
 
 ```bash
-contix push --tools codex --days 14 --push
+contix collect --tools codex --days 14
+contix push
 ```
 
 ---
@@ -253,7 +256,7 @@ contix push --tools codex --days 14 --push
 **`git is not installed or not on PATH`** — install git; `contix` relies on it.
 
 **Push rejected / non-fast-forward** — someone else (another machine) pushed
-first. `contix push --push` runs `git pull --rebase` before pushing; if a genuine
+first. `contix push` runs `git pull --rebase` before pushing; if a genuine
 conflict exists, resolve it in `repo_path` and push again.
 
 **`version mismatch` on pull** — the tool version that produced the state differs

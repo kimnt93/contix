@@ -28,12 +28,11 @@ func (m *mapList) Set(v string) error {
 	return nil
 }
 
-func cmdPush(args []string) int {
-	fs := flag.NewFlagSet("push", flag.ContinueOnError)
+func cmdCollect(args []string) int {
+	fs := flag.NewFlagSet("collect", flag.ContinueOnError)
 	tools := fs.String("tools", "", "comma-separated tools to push (default: all)")
 	days := fs.Int("days", 0, "only include session transcripts newer than N days (0 = all)")
 	message := fs.String("message", "", "commit message (default: auto)")
-	push := fs.Bool("push", false, "push to the git remote after committing")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -70,7 +69,7 @@ func cmdPush(args []string) int {
 		fmt.Printf("  %-8s %d files, %s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version))
 	}
 
-	// Commit + optional push.
+	// Commit the collected snapshot locally.
 	r := gitutil.Repo{Dir: cfg.RepoPath}
 	msg := *message
 	if msg == "" {
@@ -87,20 +86,48 @@ func cmdPush(args []string) int {
 		fmt.Println("\nNothing changed since last push.")
 	}
 
-	if (*push || cfg.AutoPush) && cfg.Remote != "" {
-		fmt.Println("Pushing to remote...")
-		if r.RemoteHasBranch(cfg.Branch) {
-			if err := r.Pull(cfg.Branch); err != nil {
-				fmt.Fprintln(os.Stderr, "warning: pull before push failed:", err)
-			}
-		}
-		if err := r.Push(cfg.Branch); err != nil {
+	if cfg.Remote != "" {
+		fmt.Println("Run 'contix push' to upload the collected state.")
+	}
+	return 0
+}
+
+func cmdPush(args []string) int {
+	fs := flag.NewFlagSet("push", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 0 {
+		return fail(fmt.Errorf("push does not accept positional arguments"))
+	}
+	cfg, ok := mustConfig()
+	if !ok {
+		return 1
+	}
+	if cfg.Remote == "" {
+		return fail(fmt.Errorf("no git remote configured; run 'contix init --remote <url>'"))
+	}
+	r := gitutil.Repo{Dir: cfg.RepoPath}
+	if !r.IsRepo() {
+		return fail(fmt.Errorf("sync repo not initialised; run 'contix init' first"))
+	}
+	clean, err := r.IsClean()
+	if err != nil {
+		return fail(err)
+	}
+	if !clean {
+		return fail(fmt.Errorf("sync repo has uncommitted changes; run 'contix collect' first"))
+	}
+	if r.RemoteHasBranch(cfg.Branch) {
+		fmt.Println("Updating from remote before push...")
+		if err := r.Pull(cfg.Branch); err != nil {
 			return fail(err)
 		}
-		fmt.Println("Pushed to", cfg.Remote)
-	} else if cfg.Remote != "" {
-		fmt.Println("Run 'contix push --push' (or set auto-push) to upload to the remote.")
 	}
+	if err := r.Push(cfg.Branch); err != nil {
+		return fail(err)
+	}
+	fmt.Println("Pushed collected state to", cfg.Remote)
 	return 0
 }
 

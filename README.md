@@ -56,7 +56,7 @@ make upgrade      # later: fast-forward this checkout and reinstall latest
 Both commands print the installed version and its short release notes. Release
 metadata is kept in two easy-to-edit files:
 
-- [`release/VERSION`](release/VERSION) — one version string, such as `0.2.2`
+- [`release/VERSION`](release/VERSION) — one version string, such as `0.3.0`
 - [`release/NOTES`](release/NOTES) — a short install/upgrade message
 
 The files are embedded into the binary during the build, so they are not needed
@@ -90,15 +90,13 @@ Create an **empty, private** git repo on GitHub (e.g. `you/dev-state`), then:
 
 ```bash
 contix init --remote git@github.com:you/dev-state.git
-contix push          # collect tool state and commit locally
-contix push --push   # ...and upload to GitHub
+contix collect       # collect tool state and commit locally
+contix push          # upload the collected state to GitHub
 ```
 
 The remote may be **SSH** (`git@github.com:you/dev-state.git`) or **HTTPS**
 (`https://github.com/you/dev-state.git`). SSH uses your existing SSH key; HTTPS
 uses your git credential helper or a Personal Access Token.
-
-Tip: `contix init --remote <url> --auto-push` uploads automatically on every push.
 
 ### 2. New machine
 
@@ -119,7 +117,8 @@ Your Codex/Claude/Hermes memory and settings are back.
 |---|---|
 | `contix init` | Configure the sync repo. Clones the remote if it already has data. |
 | `contix status` | Show config and what each tool would sync. |
-| `contix push [--push]` | Collect AI state, commit, and (with `--push`) upload. |
+| `contix collect` | Collect AI state and commit it locally. |
+| `contix push` | Upload the collected state to the configured remote. |
 | `contix pull` | Pull from the remote and restore AI state onto this machine. |
 | `contix list` | List what is currently stored in the sync repo. |
 | `contix verify` | Extract and checksum every bundle to confirm integrity. |
@@ -128,10 +127,10 @@ Your Codex/Claude/Hermes memory and settings are back.
 
 Common flags:
 
-- `contix push --days 30` — only include session transcripts from the last 30
+- `contix collect --days 30` — only include session transcripts from the last 30
   days (memory, rules and skills are always kept). Keeps bundles small.
-- `contix push --tools codex` — sync only one tool.
-- `contix push --message "before reinstall"` — custom commit message.
+- `contix collect --tools codex` — sync only one tool.
+- `contix collect --message "before reinstall"` — custom commit message.
 - `contix pull --map /old/home=/new/home` — extra path rewrite rule.
 
 See [docs/usage.md](docs/usage.md) for the full reference and internals.

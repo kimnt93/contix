@@ -28,7 +28,8 @@ USAGE
 COMMANDS
   init      Configure the sync repo (clones the remote on a new machine)
   status    Show configuration and what would be synced
-  push      Collect AI state, commit, and push to the remote
+  collect   Collect AI state and commit it locally
+  push      Upload the collected state to the remote
   pull      Pull from the remote and restore AI state onto this machine
   list      List what is currently stored in the sync repo
   verify    Check archive integrity of everything in the sync repo
@@ -42,6 +43,7 @@ QUICK START
   # First machine — the remote may be SSH or HTTPS:
   contix init --remote git@github.com:you/dev-state.git
   #   or: contix init --remote https://github.com/you/dev-state.git
+  contix collect
   contix push
 
   # New machine
@@ -61,6 +63,8 @@ func Run(args []string) int {
 		return cmdInit(rest)
 	case "status":
 		return cmdStatus(rest)
+	case "collect":
+		return cmdCollect(rest)
 	case "push":
 		return cmdPush(rest)
 	case "pull":
@@ -108,7 +112,6 @@ func cmdInit(args []string) int {
 	repo := fs.String("repo", "", "local sync repo path (default: config dir/repo)")
 	remote := fs.String("remote", "", "git remote URL of the sync repo")
 	branch := fs.String("branch", "main", "git branch to sync on")
-	autoPush := fs.Bool("auto-push", false, "push to the remote automatically after each 'push'")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -138,7 +141,6 @@ func cmdInit(args []string) int {
 	if *branch != "" {
 		cfg.Branch = *branch
 	}
-	cfg.AutoPush = *autoPush
 	cfg.Home = platform.Home()
 
 	if err := ensureRepo(cfg); err != nil {
@@ -159,7 +161,7 @@ func cmdInit(args []string) int {
 		fmt.Println("Using an HTTPS remote: pushing needs a git credential helper or a")
 		fmt.Println("Personal Access Token. SSH remotes (git@github.com:…) use your SSH key.")
 	}
-	fmt.Println("Next: run 'contix push' to snapshot your AI tool state.")
+	fmt.Println("Next: run 'contix collect', then 'contix push'.")
 	fmt.Println("On a new machine after init: 'contix pull' to restore everything.")
 	return 0
 }
@@ -217,7 +219,7 @@ func writeRepoReadme(dir string) {
 		"# contix sync repo\n\n"+
 			"This repository is managed by [contix](https://github.com/). It stores the\n"+
 			"latest snapshot of Codex / Claude Code / Hermes state.\n\n"+
-			"Do not edit by hand. Use `contix push` and `contix pull`.\n"), 0o644)
+			"Do not edit by hand. Use `contix collect`, `contix push` and `contix pull`.\n"), 0o644)
 }
 
 func cmdStatus(args []string) int {
@@ -229,7 +231,6 @@ func cmdStatus(args []string) int {
 	fmt.Printf("sync repo : %s\n", cfg.RepoPath)
 	fmt.Printf("remote    : %s\n", orNone(cfg.Remote))
 	fmt.Printf("branch    : %s\n", cfg.Branch)
-	fmt.Printf("auto-push : %v\n\n", cfg.AutoPush)
 
 	fmt.Println("AI tools:")
 	names := tool.Names()
@@ -248,7 +249,7 @@ func cmdStatus(args []string) int {
 	r := gitutil.Repo{Dir: cfg.RepoPath}
 	if r.IsRepo() {
 		if s, _ := r.Status(); strings.TrimSpace(s) != "" {
-			fmt.Println("\nSync repo has uncommitted changes (run 'contix push').")
+			fmt.Println("\nSync repo has uncommitted changes (run 'contix collect').")
 		} else {
 			fmt.Println("\nSync repo is clean.")
 		}

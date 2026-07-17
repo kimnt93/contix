@@ -20,8 +20,6 @@ type Config struct {
 	Remote string `json:"remote,omitempty"`
 	// Branch is the git branch used for syncing.
 	Branch string `json:"branch"`
-	// AutoPush pushes to the remote automatically after each push command.
-	AutoPush bool `json:"auto_push"`
 	// Home is this machine's home directory recorded at init time. Used as a
 	// hint; the live home is always re-resolved at runtime.
 	Home string `json:"home"`
@@ -37,7 +35,6 @@ func Default() Config {
 	return Config{
 		RepoPath: filepath.Join(platform.ConfigDir(), "repo"),
 		Branch:   "main",
-		AutoPush: false,
 		Home:     platform.Home(),
 	}
 }
