@@ -17,6 +17,7 @@
 - [x] Remove snapshots left by retired non-coding targets on the next collection
 - [x] Preserve previous snapshots when a coding agent is not installed
 - [x] Detect pull conflicts and require pull --ignore before overwriting
+- [x] Avoid binary Git merges: pushing machine wins and remote wins on pull
 - [x] Compress once and split large archives into 5 MiB Git-safe parts
 - [x] Show live collection, restoration and Git transfer progress
 - [x] Retry transient file races without hiding persistent permission errors

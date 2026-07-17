@@ -191,21 +191,56 @@ func (r Repo) CommitSnapshot(branch, message string) (bool, error) {
 	return true, nil
 }
 
-// Pull fetches and rebases from origin on the given branch.
+// AbortInterruptedOperation leaves any merge/rebase/cherry-pick state behind by
+// a failed older sync. Errors are intentionally ignored: each abort command
+// also fails when that operation is not active, and the caller validates the
+// resulting working tree before publishing.
+func (r Repo) AbortInterruptedOperation() {
+	_, _ = r.run("rebase", "--abort")
+	_, _ = r.run("merge", "--abort")
+	_, _ = r.run("cherry-pick", "--abort")
+}
+
+// fetchBranchProgress refreshes exactly one remote-tracking branch. The leading
+// plus is safe here because refs/remotes/origin is a local cache of origin.
+func (r Repo) fetchBranchProgress(branch string, out io.Writer) error {
+	refspec := "+refs/heads/" + branch + ":refs/remotes/origin/" + branch
+	return r.runStreaming(out, "fetch", "--progress", "origin", refspec)
+}
+
+// Pull replaces the managed sync working tree with origin's snapshot. Snapshot
+// archives are binary and must never be merged or rebased.
 func (r Repo) Pull(branch string) error {
 	if !r.HasRemote() {
 		return nil
 	}
-	_, err := r.run("pull", "--rebase", "--autostash", "origin", branch)
+	r.AbortInterruptedOperation()
+	refspec := "+refs/heads/" + branch + ":refs/remotes/origin/" + branch
+	if _, err := r.run("fetch", "origin", refspec); err != nil {
+		return err
+	}
+	if _, err := r.run("reset", "--hard", "refs/remotes/origin/"+branch); err != nil {
+		return err
+	}
+	_, err := r.run("clean", "-fd")
 	return err
 }
 
-// PullProgress pulls while streaming Git's native transfer progress.
+// PullProgress replaces the managed sync working tree with origin's snapshot
+// while streaming Git's native transfer progress.
 func (r Repo) PullProgress(branch string, out io.Writer) error {
 	if !r.HasRemote() {
 		return nil
 	}
-	return r.runStreaming(out, "pull", "--progress", "--rebase", "--autostash", "origin", branch)
+	r.AbortInterruptedOperation()
+	if err := r.fetchBranchProgress(branch, out); err != nil {
+		return err
+	}
+	if _, err := r.run("reset", "--hard", "refs/remotes/origin/"+branch); err != nil {
+		return err
+	}
+	_, err := r.run("clean", "-fd")
+	return err
 }
 
 // Push pushes the branch to origin, setting upstream on first push.
@@ -217,12 +252,22 @@ func (r Repo) Push(branch string) error {
 	return err
 }
 
-// PushProgress pushes while streaming Git's native transfer progress.
+// PushProgress publishes the local snapshot without merging binary archives.
+// When the branch exists, fetch first and use force-with-lease so this snapshot
+// replaces the observed remote state but refuses to overwrite a concurrent
+// update that arrived after the fetch.
 func (r Repo) PushProgress(branch string, out io.Writer) error {
 	if !r.HasRemote() {
 		return fmt.Errorf("no git remote configured")
 	}
-	return r.runStreaming(out, "push", "--progress", "-u", "origin", branch)
+	if !r.RemoteHasBranch(branch) {
+		return r.runStreaming(out, "push", "--progress", "-u", "origin", branch)
+	}
+	if err := r.fetchBranchProgress(branch, out); err != nil {
+		return err
+	}
+	lease := "--force-with-lease=refs/heads/" + branch
+	return r.runStreaming(out, "push", "--progress", lease, "-u", "origin", branch)
 }
 
 // Status returns short porcelain status lines.

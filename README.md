@@ -52,6 +52,7 @@ Upgrade later with `make upgrade`.
 
 - [x] Four commands: `init`, `collect`, `push`, and `pull`
 - [x] Automatic timestamped local commits
+- [x] Snapshot Git policy: pushing machine wins; remote wins on pull
 - [x] Recursive `tar.gz` compression with 5 MiB Git-safe parts
 - [x] Collection, restore, and Git transfer progress
 - [x] Previous snapshots preserved when an agent is missing

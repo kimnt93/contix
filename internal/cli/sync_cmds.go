@@ -150,6 +150,7 @@ func cmdPush(args []string) int {
 	if !r.IsRepo() {
 		return fail(fmt.Errorf("sync repo not initialised; run 'contix init' first"))
 	}
+	r.AbortInterruptedOperation()
 	fmt.Println("Preparing collected state for upload...")
 	clean, err := r.IsClean()
 	if err != nil {
@@ -158,14 +159,7 @@ func cmdPush(args []string) int {
 	if !clean {
 		return fail(fmt.Errorf("sync repo has uncommitted changes; run 'contix collect' first"))
 	}
-	fmt.Println("Checking remote branch...")
-	if r.RemoteHasBranch(cfg.Branch) {
-		fmt.Println("Updating from remote before push...")
-		if err := r.PullProgress(cfg.Branch, os.Stdout); err != nil {
-			return fail(err)
-		}
-	}
-	fmt.Println("Pushing collected state...")
+	fmt.Println("Publishing local snapshot (this machine wins)...")
 	if err := r.PushProgress(cfg.Branch, os.Stdout); err != nil {
 		return fail(err)
 	}
@@ -196,7 +190,7 @@ func cmdPull(args []string) int {
 		return fail(fmt.Errorf("sync repo not initialised; run 'contix init' first"))
 	}
 	if cfg.Remote != "" {
-		fmt.Println("Pulling latest from remote...")
+		fmt.Println("Replacing managed sync repo with remote snapshot...")
 		if err := r.PullProgress(cfg.Branch, os.Stdout); err != nil {
 			return fail(err)
 		}

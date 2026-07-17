@@ -65,8 +65,11 @@ force-kills matching processes still running.
 
 ### `contix push`
 
-Requires a clean sync repository produced by `collect`. It rebases from the
-remote branch first, then streams native Git upload progress.
+Requires a clean sync repository produced by `collect`. Contix aborts stale Git
+merge/rebase state, fetches the current branch and publishes the local snapshot
+with `--force-with-lease`. The pushing machine wins without attempting to merge
+binary archives; a truly concurrent update makes the lease fail safely, and
+rerunning `push` retries against the newly observed remote state.
 
 ### `contix pull`
 
@@ -74,10 +77,12 @@ remote branch first, then streams native Git upload progress.
 --ignore           Overwrite conflicting local files
 ```
 
-Pull downloads the latest commit, checks local conflicts, extracts each archive,
-verifies its SHA-256 manifest, and rewrites the source machine's home path for
-the destination machine. Without `--ignore`, any differing local file preserves
-that entire target and is reported to the user.
+Pull aborts stale Git merge/rebase state, fetches the latest commit, and
+hard-resets the managed sync repository to the remote snapshot. It then checks
+local agent-file conflicts, extracts each archive, verifies its SHA-256 manifest,
+and rewrites the source machine's home path for the destination machine. Without
+`--ignore`, any differing local agent file preserves that entire target and is
+reported to the user.
 
 ## Coding-agent paths
 
@@ -187,6 +192,10 @@ contix pull
 - **GitHub large-file rejection:** upgrade, collect again, then push. Current
   archives are split into five-MiB parts.
 - **Pull conflict:** review reported files or explicitly use `pull --ignore`.
+- **Git merge/rebase conflict from an older Contix:** rerun `contix push` to
+  publish this machine's collected snapshot, or `contix pull` to discard the
+  local sync-repo snapshot and use the remote. Current versions abort the stale
+  Git operation automatically.
 - **Missing agent:** its previous remote snapshot is retained and local state is
   unchanged during pull.
 
