@@ -1,1 +1,9 @@
-Uses 5 MiB archive parts and shows live progress while collecting, pushing and pulling.
+- [x] Sync Codex, Claude Code and Hermes state
+- [x] Sync Kiro settings, agents, prompts, steering and sessions
+- [x] Sync Google Antigravity rules, conversations, knowledge and artifacts
+- [x] Sync SSH configuration while excluding private keys
+- [x] Sync the system hosts file with permission-safe staging
+- [x] Preserve previous snapshots when a target is missing
+- [x] Preserve local state when no remote bundle exists
+- [x] Compress once and split large archives into 5 MiB Git-safe parts
+- [x] Show live activity and Git transfer progress

@@ -20,16 +20,16 @@ import (
 // -ldflags "-X contix/internal/cli.Version=x.y.z".
 var Version = releaseinfo.Version()
 
-const usage = `contix — sync Codex, Claude Code and Hermes state to one GitHub repo.
+const usage = `contix — sync coding-agent state and portable machine config to one GitHub repo.
 
 USAGE
   contix <command> [flags]
 
 COMMANDS
   init      Configure the sync repo (clones the remote on a new machine)
-  collect   Collect AI state and commit it locally
+  collect   Collect available state and commit it locally
   push      Upload the collected state to the remote
-  pull      Pull from the remote and restore AI state onto this machine
+  pull      Pull from the remote and restore available state
 
 Run "contix <command> -h" for command-specific flags.
 
@@ -64,7 +64,10 @@ func Run(args []string) int {
 	case "--version", "-v":
 		fmt.Printf("contix %s\n", Version)
 		if notes := releaseinfo.Notes(); notes != "" {
-			fmt.Printf("notes: %s\n", notes)
+			fmt.Println("features:")
+			for _, line := range strings.Split(notes, "\n") {
+				fmt.Printf("  %s\n", line)
+			}
 		}
 		return 0
 	case "-h", "--help":
@@ -99,6 +102,9 @@ func cmdInit(args []string) int {
 	remote := fs.String("remote", "", "git remote URL of the sync repo")
 	branch := fs.String("branch", "main", "git branch to sync on")
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
 		return 2
 	}
 	if !gitutil.Available() {
@@ -204,7 +210,7 @@ func writeRepoReadme(dir string) {
 	_ = os.WriteFile(readme, []byte(
 		"# contix sync repo\n\n"+
 			"This repository is managed by [contix](https://github.com/). It stores the\n"+
-			"latest snapshot of Codex / Claude Code / Hermes state.\n\n"+
+			"latest snapshot of coding-agent state plus SSH and hosts configuration.\n\n"+
 			"Do not edit by hand. Use `contix collect`, `contix push` and `contix pull`.\n"), 0o644)
 }
 
@@ -215,7 +221,7 @@ func orNone(s string) string {
 	return s
 }
 
-// parseTools resolves a comma-separated tool list into Tool values. An empty
+// parseTools resolves a comma-separated target list into Tool values. An empty
 // selection means "all known tools".
 func parseTools(csv string) ([]tool.Tool, error) {
 	if strings.TrimSpace(csv) == "" {
@@ -234,7 +240,7 @@ func parseTools(csv string) ([]tool.Tool, error) {
 		}
 		t, ok := tool.Lookup(name)
 		if !ok {
-			return nil, fmt.Errorf("unknown tool %q (known: %s)", name, strings.Join(tool.Names(), ", "))
+			return nil, fmt.Errorf("unknown target %q (known: %s)", name, strings.Join(tool.Names(), ", "))
 		}
 		out = append(out, t)
 	}

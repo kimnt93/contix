@@ -5,6 +5,7 @@ package platform
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 // Home returns the current user's home directory.
@@ -64,4 +65,53 @@ func HermesHome() string {
 		return v
 	}
 	return filepath.Join(Home(), ".hermes")
+}
+
+// KiroHome resolves Kiro's global state directory, honouring the official
+// KIRO_HOME override used by Kiro CLI.
+func KiroHome() string {
+	if v := os.Getenv("KIRO_HOME"); v != "" {
+		return v
+	}
+	return filepath.Join(Home(), ".kiro")
+}
+
+// AntigravityHome resolves the parent of Antigravity's agent data. Google
+// stores its portable artifacts, knowledge and conversations below
+// ~/.gemini/antigravity, with global rules at ~/.gemini/GEMINI.md.
+func AntigravityHome() string {
+	if v := os.Getenv("ANTIGRAVITY_HOME"); v != "" {
+		return v
+	}
+	return filepath.Join(Home(), ".gemini")
+}
+
+// SSHHome resolves the user's SSH configuration directory. CONTIX_SSH_HOME is
+// primarily useful for non-standard setups and isolated testing.
+func SSHHome() string {
+	if v := os.Getenv("CONTIX_SSH_HOME"); v != "" {
+		return v
+	}
+	return filepath.Join(Home(), ".ssh")
+}
+
+// HostsDir returns the directory containing the system hosts file.
+func HostsDir() string {
+	if v := os.Getenv("CONTIX_HOSTS_DIR"); v != "" {
+		return v
+	}
+	if runtime.GOOS == "windows" {
+		root := os.Getenv("SystemRoot")
+		if root == "" {
+			root = `C:\Windows`
+		}
+		return filepath.Join(root, "System32", "drivers", "etc")
+	}
+	return "/etc"
+}
+
+// HostsStagingDir is a user-writable holding area used when the system hosts
+// file cannot be replaced without administrator privileges.
+func HostsStagingDir() string {
+	return filepath.Join(ConfigDir(), "pending", "hosts")
 }

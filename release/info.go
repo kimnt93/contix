@@ -15,5 +15,5 @@ var notesData string
 // Version returns the release version compiled into this binary.
 func Version() string { return strings.TrimSpace(versionData) }
 
-// Notes returns the short release notes compiled into this binary.
+// Notes returns the feature checklist compiled into this binary.
 func Notes() string { return strings.TrimSpace(notesData) }

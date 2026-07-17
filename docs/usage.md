@@ -21,8 +21,8 @@ This document is the full reference for `contix`. For a quick overview see the
 - **Sync repo** — a single git repository you own (usually private on GitHub)
   that stores the *latest* snapshot of everything. `contix` keeps a local clone
   and pushes/pulls it.
-- **Tools** — the AI coding agents `contix` understands: `codex`, `claude`, and
-  `hermes`.
+- **Targets** — `antigravity`, `claude`, `codex`, `hermes`, `hosts`, `kiro` and
+  `ssh`.
   Each has a curated include/exclude list so only meaningful state is synced.
 - **Snapshot** — one `contix collect`: it rebuilds the bundles, commits them to the
   sync repo, and optionally pushes to the remote.
@@ -54,7 +54,7 @@ Re-running `init` updates the configuration in place, such as adding a remote.
 ### `contix collect`
 
 ```
---tools <list>     Comma-separated tools to collect (default: all)
+--tools <list>     Comma-separated targets to collect (default: all)
 ```
 
 Steps: collect each tool's portable files into `tarball + manifest`, remove any
@@ -63,6 +63,8 @@ Compressed bundles larger than 5 MiB are split into GitHub-safe parts. If a
 previous snapshot was never accepted by the remote, `collect` replaces/squashes
 that unpublished history so rejected large objects are no longer pushed.
 The commit message, hostname and timestamp are generated automatically.
+When a target is missing or has no matching files, any previous bundle already
+in the sync repo is kept.
 
 ### `contix push`
 
@@ -75,8 +77,9 @@ while it works.
 
 Steps: `git pull` the sync repo, extract each tool bundle into its home dir,
 verify every file against its recorded SHA-256, then rewrite embedded paths for
-this machine. Pull always restores all three tools and verifies their checksums.
+this machine. Pull restores every available target and verifies its checksums.
 Git transfer progress and per-tool restore activity remain visible throughout.
+If no remote bundle exists for a target, its local files are left unchanged.
 
 ---
 
@@ -106,14 +109,18 @@ Environment overrides for tool locations:
 - `CODEX_HOME` — Codex state dir (default `~/.codex`)
 - `CLAUDE_CONFIG_DIR` — Claude Code state dir (default `~/.claude`)
 - `HERMES_HOME` — Hermes Agent state dir (default `~/.hermes`)
+- `KIRO_HOME` — Kiro state dir (default `~/.kiro`)
+- `ANTIGRAVITY_HOME` — Antigravity/Gemini state root (default `~/.gemini`)
+- `CONTIX_SSH_HOME` — SSH config dir (default `~/.ssh`)
+- `CONTIX_HOSTS_DIR` — system hosts directory (default `/etc` on Unix)
 
 ---
 
 ## What gets synced (and skipped)
 
-`contix` syncs **everything** under each tool's home directory, except for a
-small set of items that are unsafe or pointless to sync. Matching rules for the
-exclude patterns (relative to each tool's home):
+Most agent targets sync everything under their state directory except unsafe or
+reproducible data. Sensitive machine roots use strict allowlists. Matching rules
+for exclude patterns are relative to each target's root:
 
 - `dir/` — the directory and everything under it
 - `*.ext` — glob on the file's basename
@@ -156,6 +163,35 @@ following are excluded:
   `cron/ticker_heartbeat`
 - lock files and SQLite sidecars
 
+### Kiro (`~/.kiro`)
+
+Global agents, prompts, steering, settings, skills and CLI sessions are synced.
+Credential files, `.env`, runtime locks, temporary data, logs, caches and nested
+git repositories are excluded. Kiro's official `KIRO_HOME` override is honored.
+
+### Google Antigravity (`~/.gemini`)
+
+The allowlist contains `GEMINI.md` and `antigravity/`, covering global rules,
+artifacts, knowledge, conversations and MCP configuration. Authentication files,
+the machine-specific `installation_id`, locks, temporary data, logs and caches
+are excluded. Large IDE caches and installed extensions outside this state root
+are intentionally not copied.
+
+### SSH configuration (`~/.ssh`)
+
+Only the root `config` file and the `config.d/` or `conf.d/` fragment directories
+are allowed. Keys, `known_hosts`, and similarly named files inside backup
+directories cannot enter the archive.
+
+### System hosts file
+
+Only `hosts` under the platform's system hosts directory is collected. On pull,
+contix writes it directly only when the destination is writable. Otherwise the
+local file remains unchanged and the synced copy is verified and staged at the
+path printed by `contix pull` (normally
+`~/.config/contix/pending/hosts/hosts`). Review it before applying it with
+administrator privileges because host-specific entries may differ.
+
 ## Cross-machine path rewriting
 
 Session and project files often embed absolute paths (e.g.
@@ -177,6 +213,7 @@ Path rewriting is automatic during `contix pull`.
 ```
 <repo>/
 ├── README.md                 # generated note
+├── antigravity/              # agent artifacts, knowledge and rules
 ├── claude/
 │   ├── bundle.tar.gz         # compressed Claude state
 │   └── manifest.json         # per-file SHA-256, tool version, source machine
@@ -184,9 +221,10 @@ Path rewriting is automatic during `contix pull`.
 │   ├── bundle.tar.gz.part-000 # large bundles are split into 5 MiB parts
 │   ├── bundle.tar.gz.part-001
 │   └── manifest.json
-└── hermes/
-│   ├── bundle.tar.gz
-│   └── manifest.json
+├── hermes/                   # same bundle + manifest layout
+├── hosts/
+├── kiro/
+└── ssh/
 ```
 
 ---
@@ -215,8 +253,8 @@ contix pull
 make upgrade
 ```
 
-`make install`, `make upgrade`, and `contix --version` show the version and short
-release notes. Change [`release/VERSION`](../release/VERSION) and
+`make install`, `make upgrade`, and `contix --version` show the version and
+feature checklist. Change [`release/VERSION`](../release/VERSION) and
 [`release/NOTES`](../release/NOTES), then run `make release`; both values are
 embedded into the resulting binaries.
 
@@ -225,6 +263,12 @@ embedded into the resulting binaries.
 ```bash
 contix collect --tools codex
 contix push
+```
+
+Multiple targets can be selected together:
+
+```bash
+contix collect --tools kiro,antigravity,ssh,hosts
 ```
 
 ---
@@ -244,3 +288,7 @@ archive and rewrites the unpublished rejected snapshot.
 **`version mismatch` on pull** — the tool version that produced the state differs
 from the one installed here. State usually still loads; update the tool to match
 if you hit format issues.
+
+**Hosts was staged instead of restored** — the system hosts file needs elevated
+permissions. Contix prints the staged and destination paths and deliberately
+keeps the local file untouched for review.

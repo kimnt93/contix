@@ -13,8 +13,11 @@ import (
 
 func cmdCollect(args []string) int {
 	fs := flag.NewFlagSet("collect", flag.ContinueOnError)
-	tools := fs.String("tools", "", "comma-separated tools to collect (default: all)")
+	tools := fs.String("tools", "", "comma-separated targets to collect (default: all)")
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
 		return 2
 	}
 	if fs.NArg() != 0 {
@@ -40,23 +43,23 @@ func cmdCollect(args []string) int {
 		return fail(err)
 	}
 
-	fmt.Println("Collecting AI tool state:")
+	fmt.Println("Collecting state:")
 	for _, t := range tls {
-		stop := startActivity(fmt.Sprintf("  %-8s compressing", t.Name))
+		stop := startActivity(fmt.Sprintf("  %-12s compressing", t.Name))
 		res, err := syncer.Push(cfg, t)
 		stop()
 		if err != nil {
-			return fail(fmt.Errorf("push %s: %w", t.Name, err))
+			return fail(fmt.Errorf("collect %s: %w", t.Name, err))
 		}
 		if res.Skipped != "" {
-			fmt.Printf("  %-8s skipped (%s)\n", t.Name, res.Skipped)
+			fmt.Printf("  %-12s skipped (%s)\n", t.Name, res.Skipped)
 			continue
 		}
 		parts := ""
 		if res.Parts > 1 {
 			parts = fmt.Sprintf(", %d compressed parts", res.Parts)
 		}
-		fmt.Printf("  %-8s done: %d files, %s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts)
+		fmt.Printf("  %-12s done: %d files, %s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts)
 	}
 
 	// Commit the collected snapshot locally.
@@ -82,6 +85,9 @@ func cmdCollect(args []string) int {
 func cmdPush(args []string) int {
 	fs := flag.NewFlagSet("push", flag.ContinueOnError)
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
 		return 2
 	}
 	if fs.NArg() != 0 {
@@ -124,6 +130,9 @@ func cmdPush(args []string) int {
 func cmdPull(args []string) int {
 	fs := flag.NewFlagSet("pull", flag.ContinueOnError)
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
 		return 2
 	}
 	if fs.NArg() != 0 {
@@ -151,23 +160,32 @@ func cmdPull(args []string) int {
 		return fail(err)
 	}
 
-	fmt.Println("\nRestoring AI tool state:")
+	fmt.Println("\nRestoring state:")
 	for _, t := range tls {
-		stop := startActivity(fmt.Sprintf("  %-8s restoring and verifying", t.Name))
+		stop := startActivity(fmt.Sprintf("  %-12s restoring and verifying", t.Name))
 		res, err := syncer.Pull(cfg, t, nil, true)
 		stop()
 		if err != nil {
 			return fail(fmt.Errorf("pull %s: %w", t.Name, err))
 		}
 		if res.Skipped != "" {
-			fmt.Printf("  %-8s skipped (%s)\n", t.Name, res.Skipped)
+			fmt.Printf("  %-12s skipped (%s)\n", t.Name, res.Skipped)
 			continue
 		}
-		line := fmt.Sprintf("  %-8s done: %d files restored", t.Name, res.Files)
+		action := "restored"
+		if res.DeferredPath != "" {
+			action = "staged"
+		}
+		line := fmt.Sprintf("  %-12s done: %d files %s", t.Name, res.Files, action)
 		if res.FilesRewrite > 0 || res.DirsRenamed > 0 {
 			line += fmt.Sprintf(", %d rewritten, %d dirs renamed", res.FilesRewrite, res.DirsRenamed)
 		}
 		fmt.Println(line)
+		if res.DeferredPath != "" {
+			fmt.Println("               destination needs permission; local file kept")
+			fmt.Printf("               synced copy: %s\n", res.DeferredPath)
+			fmt.Printf("               destination: %s\n", res.Destination)
+		}
 		if !res.VersionOK {
 			fmt.Printf("           version mismatch: synced %s, local %s — update the tool to match\n",
 				orUnknown(res.SourceVersion), orUnknown(res.LocalVersion))
@@ -180,7 +198,7 @@ func cmdPull(args []string) int {
 		}
 	}
 
-	fmt.Println("\nDone. Your AI agents should resume where you left off.")
+	fmt.Println("\nDone. Available agent and machine state is ready.")
 	return 0
 }
 

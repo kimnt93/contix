@@ -1,6 +1,5 @@
-// Package syncer orchestrates collecting tool state into the sync repo (push)
-// and restoring it on another machine (pull) with fidelity verification and
-// path rewriting.
+// Package syncer orchestrates collecting agent and machine state into the sync
+// repo and restoring it on another machine with verification and path rewriting.
 package syncer
 
 import (
@@ -38,6 +37,8 @@ type PullResult struct {
 	DirsRenamed   int
 	FilesRewrite  int
 	Skipped       string
+	DeferredPath  string // user-writable copy when the destination needs elevation
+	Destination   string
 }
 
 // toolDir returns the repo subdirectory for a tool.
@@ -49,8 +50,10 @@ func toolDir(cfg config.Config, name string) string {
 func Push(cfg config.Config, t tool.Tool) (PushResult, error) {
 	res := PushResult{Tool: t.Name}
 	home := t.Home()
+	bundlePath := filepath.Join(toolDir(cfg, t.Name), archive.BundleName)
 	if fi, err := os.Stat(home); err != nil || !fi.IsDir() {
 		res.Skipped = fmt.Sprintf("no state dir at %s", home)
+		keepPreviousSnapshot(bundlePath, &res)
 		return res, nil
 	}
 
@@ -60,6 +63,7 @@ func Push(cfg config.Config, t tool.Tool) (PushResult, error) {
 	}
 	if len(rels) == 0 {
 		res.Skipped = "no matching files"
+		keepPreviousSnapshot(bundlePath, &res)
 		return res, nil
 	}
 
@@ -67,7 +71,6 @@ func Push(cfg config.Config, t tool.Tool) (PushResult, error) {
 	res.Version = version
 
 	m := archive.NewManifest(t.Name, version, home)
-	bundlePath := filepath.Join(toolDir(cfg, t.Name), archive.BundleName)
 	m, err = archive.Create(home, rels, bundlePath, m)
 	if err != nil {
 		return res, err
@@ -89,6 +92,12 @@ func Push(cfg config.Config, t tool.Tool) (PushResult, error) {
 	return res, nil
 }
 
+func keepPreviousSnapshot(bundlePath string, res *PushResult) {
+	if archive.Exists(bundlePath) {
+		res.Skipped += "; previous synced state kept"
+	}
+}
+
 // Pull restores a tool's state from the repo onto this machine.
 func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrite bool) (PullResult, error) {
 	res := PullResult{Tool: t.Name}
@@ -96,7 +105,7 @@ func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrit
 	bundlePath := filepath.Join(toolDir(cfg, t.Name), archive.BundleName)
 
 	if !archive.Exists(bundlePath) {
-		res.Skipped = "nothing synced for this tool yet"
+		res.Skipped = "nothing synced for this tool yet; local state kept"
 		return res, nil
 	}
 	m, err := archive.ReadManifest(manifestPath)
@@ -105,18 +114,26 @@ func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrit
 	}
 
 	home := t.Home()
-	if err := os.MkdirAll(home, 0o755); err != nil {
+	restoreRoot := home
+	if t.RestoreFallback != nil && t.WriteProbe != "" {
+		res.Destination = filepath.Join(home, filepath.FromSlash(t.WriteProbe))
+		if !writableFile(res.Destination) {
+			restoreRoot = t.RestoreFallback()
+			res.DeferredPath = filepath.Join(restoreRoot, filepath.FromSlash(t.WriteProbe))
+		}
+	}
+	if err := os.MkdirAll(restoreRoot, 0o755); err != nil {
 		return res, err
 	}
 
-	extracted, err := archive.Extract(bundlePath, home)
+	extracted, err := archive.Extract(bundlePath, restoreRoot)
 	if err != nil {
 		return res, err
 	}
 	res.Files = len(extracted)
 
 	// Fidelity check against the canonical (pre-rewrite) bytes.
-	problems, err := archive.Verify(home, m)
+	problems, err := archive.Verify(restoreRoot, m)
 	if err != nil {
 		return res, err
 	}
@@ -129,10 +146,10 @@ func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrit
 		res.SourceVersion == res.LocalVersion
 
 	// Path rewriting for cross-machine resume.
-	if rewrite {
+	if rewrite && res.DeferredPath == "" {
 		rw := pathrewrite.New(m.SourceHome, userMaps)
 		if rw.Active() {
-			files, dirs, err := rw.Apply(home)
+			files, dirs, err := rw.Apply(restoreRoot)
 			if err != nil {
 				return res, err
 			}
@@ -141,6 +158,14 @@ func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrit
 		}
 	}
 	return res, nil
+}
+
+func writableFile(path string) bool {
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return false
+	}
+	return f.Close() == nil
 }
 
 var versionRe = regexp.MustCompile(`\d+\.\d+\.\d+[\w.\-]*`)
@@ -153,7 +178,10 @@ func detectVersion(t tool.Tool, home string) string {
 			return v
 		}
 	}
-	bin := t.Name // "codex" / "claude"
+	bin := t.Binary
+	if bin == "" {
+		return ""
+	}
 	if _, err := exec.LookPath(bin); err != nil {
 		return ""
 	}

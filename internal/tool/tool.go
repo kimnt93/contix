@@ -1,5 +1,5 @@
-// Package tool defines the syncable tools (Codex, Claude Code, Hermes): where their
-// state lives, which paths are worth syncing, and how to detect their version.
+// Package tool defines syncable agent and machine state: where it lives, which
+// paths are safe and useful to sync, and how to detect a related tool version.
 package tool
 
 import (
@@ -18,26 +18,42 @@ type Tool struct {
 	Name string
 	// Home returns the absolute state directory for this tool on this machine.
 	Home func() string
+	// Include is an optional allowlist rooted at Home. An empty list includes
+	// everything except Exclude. It is used for sensitive roots such as ~/.ssh.
+	Include []string
 	// Exclude lists path patterns that must never be synced. Everything under
-	// Home that does not match an Exclude pattern is synced.
+	// Home allowed by Include and not matching Exclude is synced.
 	Exclude []string
+	// Binary is the executable probed with --version. Empty disables probing.
+	Binary string
+	// RejectContent can conservatively reject an otherwise allowed file after
+	// inspecting its content (used to prevent disguised SSH private keys).
+	RejectContent func(path string) bool
 	// Version detects the installed tool version from its state dir. Returns
 	// "" when unknown.
 	Version func(home string) string
+	// RestoreFallback is used when WriteProbe cannot be opened for writing. It
+	// lets privileged files be safely staged without touching the local copy.
+	RestoreFallback func() string
+	WriteProbe      string
 }
 
 // Registry returns all known tools keyed by name.
 func Registry() map[string]Tool {
 	return map[string]Tool{
-		"codex":  codex(),
-		"claude": claude(),
-		"hermes": hermes(),
+		"antigravity": antigravity(),
+		"claude":      claude(),
+		"codex":       codex(),
+		"hermes":      hermes(),
+		"hosts":       hosts(),
+		"kiro":        kiro(),
+		"ssh":         sshConfig(),
 	}
 }
 
 // Names returns the sorted list of known tool names.
 func Names() []string {
-	return []string{"claude", "codex", "hermes"}
+	return []string{"antigravity", "claude", "codex", "hermes", "hosts", "kiro", "ssh"}
 }
 
 // Lookup returns a tool by name.
@@ -48,8 +64,9 @@ func Lookup(name string) (Tool, bool) {
 
 func codex() Tool {
 	return Tool{
-		Name: "codex",
-		Home: platform.CodexHome,
+		Name:   "codex",
+		Home:   platform.CodexHome,
+		Binary: "codex",
 		// Sync everything under the Codex home except the items below.
 		Exclude: []string{
 			// Machine-locked credentials — never sync (security).
@@ -86,8 +103,9 @@ func codex() Tool {
 
 func claude() Tool {
 	return Tool{
-		Name: "claude",
-		Home: platform.ClaudeHome,
+		Name:   "claude",
+		Home:   platform.ClaudeHome,
+		Binary: "claude",
 		// Sync everything under the Claude home except the items below.
 		Exclude: []string{
 			// Machine-locked credentials — never sync (security).
@@ -109,8 +127,9 @@ func claude() Tool {
 
 func hermes() Tool {
 	return Tool{
-		Name: "hermes",
-		Home: platform.HermesHome,
+		Name:   "hermes",
+		Home:   platform.HermesHome,
+		Binary: "hermes",
 		Exclude: []string{
 			// Authentication and provider secrets stay machine-local.
 			"auth.json",
@@ -142,10 +161,96 @@ func hermes() Tool {
 	}
 }
 
-// IncludedFiles walks the tool's home directory and returns the relative
-// (forward-slash) paths of all regular files that are not excluded. Everything
-// under Home is synced except paths matching an Exclude pattern. Symlinks are
-// skipped for safety.
+func kiro() Tool {
+	return Tool{
+		Name:   "kiro",
+		Home:   platform.KiroHome,
+		Binary: "kiro-cli",
+		Exclude: []string{
+			"auth.json",
+			"credentials.json",
+			".credentials.json",
+			".env",
+			"*.lock",
+			"tmp/",
+			"logs/",
+			"cache/",
+			".git",
+		},
+	}
+}
+
+func antigravity() Tool {
+	return Tool{
+		Name:    "antigravity",
+		Home:    platform.AntigravityHome,
+		Binary:  "antigravity",
+		Include: []string{"GEMINI.md", "antigravity/"},
+		Exclude: []string{
+			"auth.json",
+			"oauth_creds.json",
+			"credentials.json",
+			".credentials.json",
+			".env",
+			"installation_id",
+			"*.lock",
+			"tmp/",
+			"cache/",
+			"logs/",
+			".git",
+		},
+	}
+}
+
+func sshConfig() Tool {
+	return Tool{
+		Name:    "ssh",
+		Home:    platform.SSHHome,
+		Binary:  "ssh",
+		Include: []string{"config", "config.d/", "conf.d/"},
+		Exclude: []string{
+			"id_*",
+			"*.key",
+			"*.pem",
+			"*.p12",
+			"*.pfx",
+			"*.pub",
+			"known_hosts*",
+			"authorized_keys*",
+		},
+		RejectContent: sshPrivateKey,
+	}
+}
+
+func sshPrivateKey(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return true
+	}
+	defer f.Close()
+	buf := make([]byte, 512)
+	n, err := f.Read(buf)
+	if err != nil && n == 0 {
+		return true
+	}
+	header := string(buf[:n])
+	return strings.Contains(header, "PRIVATE KEY-----") ||
+		strings.Contains(header, "BEGIN SSH2 ENCRYPTED PRIVATE KEY") ||
+		strings.HasPrefix(header, "PuTTY-User-Key-File-")
+}
+
+func hosts() Tool {
+	return Tool{
+		Name:            "hosts",
+		Home:            platform.HostsDir,
+		Include:         []string{"hosts"},
+		RestoreFallback: platform.HostsStagingDir,
+		WriteProbe:      "hosts",
+	}
+}
+
+// IncludedFiles walks the target's home directory and returns allowed regular
+// files that are not excluded. Symlinks are skipped for safety.
 func (t Tool) IncludedFiles() ([]string, error) {
 	home := t.Home()
 	info, err := os.Stat(home)
@@ -166,6 +271,9 @@ func (t Tool) IncludedFiles() ([]string, error) {
 			return nil
 		}
 		if d.IsDir() {
+			if len(t.Include) > 0 && !couldContainIncluded(rel, t.Include) {
+				return filepath.SkipDir
+			}
 			// Prune excluded directories entirely.
 			if matchAny(rel, t.Exclude) {
 				return filepath.SkipDir
@@ -182,10 +290,55 @@ func (t Tool) IncludedFiles() ([]string, error) {
 		if matchAny(rel, t.Exclude) {
 			return nil
 		}
+		if len(t.Include) > 0 && !includeMatchAny(rel, t.Include) {
+			return nil
+		}
+		if t.RejectContent != nil && t.RejectContent(p) {
+			return nil
+		}
 		out = append(out, rel)
 		return nil
 	})
 	return out, err
+}
+
+func includeMatchAny(rel string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if includeMatch(rel, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// includeMatch uses root-relative semantics. Unlike excludes, an allowlisted
+// "config" means only <root>/config, never a nested backup/config file.
+func includeMatch(rel, pattern string) bool {
+	rel = filepath.ToSlash(rel)
+	pattern = filepath.ToSlash(pattern)
+	if strings.HasSuffix(pattern, "/") {
+		dir := strings.TrimSuffix(pattern, "/")
+		return rel == dir || strings.HasPrefix(rel, dir+"/")
+	}
+	if strings.Contains(pattern, "*") {
+		ok, _ := path.Match(pattern, rel)
+		return ok
+	}
+	return rel == pattern || strings.HasPrefix(rel, pattern+"/")
+}
+
+func couldContainIncluded(rel string, patterns []string) bool {
+	if includeMatchAny(rel, patterns) {
+		return true
+	}
+	rel = strings.TrimSuffix(filepath.ToSlash(rel), "/")
+	for _, pattern := range patterns {
+		pattern = strings.TrimSuffix(filepath.ToSlash(pattern), "/")
+		if strings.Contains(pattern, "*") || strings.HasPrefix(pattern, rel+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // matchAny reports whether rel matches any of the patterns.
