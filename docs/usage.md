@@ -4,6 +4,31 @@ Contix synchronizes user-level AI coding-agent state. It does not discover Git
 repositories and does not synchronize general personal agents or machine
 configuration.
 
+## Installation and upgrade
+
+Prebuilt Linux, macOS and Windows binaries for amd64 and arm64 are committed in
+`dist/`, so installing Contix does not require a Go toolchain:
+
+```bash
+git clone https://github.com/kimnt93/contix.git
+cd contix
+make install
+```
+
+The installer selects the current platform binary and uses `/usr/local/bin`
+when writable, otherwise `~/.local/bin`. Override the destination with
+`BINDIR=/path` or `PREFIX=/path`.
+
+Upgrade an existing clean checkout with:
+
+```bash
+make upgrade
+```
+
+Upgrade performs a fast-forward-only Git pull and installs the committed
+prebuilt binary. Installation and upgrade print the embedded version and
+feature checklist from `release/VERSION` and `release/NOTES`.
+
 ## Commands
 
 ### `contix init`
@@ -124,6 +149,21 @@ never deletes local application state.
 Each directory contains `manifest.json` and either `bundle.tar.gz` or numbered
 `bundle.tar.gz.part-NNN` files. Five-MiB parts avoid Git hosting file limits.
 
+## Security and fidelity
+
+Use a private repository that you control. Coding-agent roots may contain API
+tokens, OAuth credentials, prompts, transcripts, source context and executable
+hooks. Contix does not remove credentials and does not add encryption beyond
+the Git transport and repository provider.
+
+Each manifest records file paths, modes, sizes and SHA-256 hashes. Pull verifies
+restored bytes before rewriting source-machine home paths. Symlinks are archived
+as symlinks, and archive extraction rejects paths that escape the target root.
+
+Collection publishes a new bundle only after compression succeeds. Files that
+disappear during collection are treated as transient; permission failures are
+retried briefly, while persistent unreadable files remain visible errors.
+
 ## Typical workflow
 
 ```bash
@@ -156,3 +196,18 @@ Edit [`../release/VERSION`](../release/VERSION) and
 [`../release/NOTES`](../release/NOTES), then run `make release`. Both values are
 embedded in every prebuilt binary and displayed by install, upgrade and
 `contix --version`.
+
+## Development
+
+The project uses the Go standard library and builds as a single binary:
+
+```bash
+make build
+make test
+make vet
+make fmt-check
+make release
+```
+
+`make release` cross-compiles Linux, macOS and Windows binaries for amd64 and
+arm64 and regenerates `dist/SHA256SUMS`.
