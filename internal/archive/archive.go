@@ -359,29 +359,54 @@ func Extract(bundlePath, destRoot string) ([]string, error) {
 		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
 			return extracted, fmt.Errorf("unsupported archive entry type for %s", hdr.Name)
 		}
-		if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
-			if err := os.Remove(target); err != nil {
-				return extracted, err
-			}
-		}
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(hdr.Mode)&0o777)
-		if err != nil {
-			return extracted, err
-		}
-		if _, err := io.Copy(out, tr); err != nil {
-			out.Close()
-			return extracted, err
-		}
-		if err := out.Chmod(os.FileMode(hdr.Mode) & 0o777); err != nil {
-			out.Close()
-			return extracted, err
-		}
-		if err := out.Close(); err != nil {
+		if err := extractRegularFile(tr, target, os.FileMode(hdr.Mode)&0o777); err != nil {
 			return extracted, err
 		}
 		extracted = append(extracted, filepath.ToSlash(hdr.Name))
 	}
 	return extracted, nil
+}
+
+// extractRegularFile writes beside the destination and renames the completed
+// file into place. Opening an existing file with O_TRUNC fails when the archived
+// mode is intentionally read-only (for example, Git object files), even though
+// its parent directory permits replacement.
+func extractRegularFile(src io.Reader, target string, mode os.FileMode) error {
+	out, err := os.CreateTemp(filepath.Dir(target), ".contix-restore-*")
+	if err != nil {
+		return err
+	}
+	tmp := out.Name()
+	defer os.Remove(tmp)
+	if _, err := io.Copy(out, src); err != nil {
+		out.Close()
+		return err
+	}
+	if err := out.Chmod(mode); err != nil {
+		out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, target); err == nil {
+		return nil
+	}
+
+	// Windows cannot rename over an existing path. This fallback also handles
+	// a local directory where the snapshot contains a regular file. Removal is
+	// scoped to this exact manifest target inside the verified restore root.
+	if info, err := os.Lstat(target); err == nil {
+		if !info.IsDir() {
+			_ = os.Chmod(target, 0o600)
+		}
+		if err := os.RemoveAll(target); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return os.Rename(tmp, target)
 }
 
 func ensureNoSymlinkParent(root, target string) error {

@@ -188,7 +188,9 @@ contix pull
 - **Unknown target:** run `contix collect -h`; supported names are also printed
   in an unknown-target error.
 - **Permission denied:** close that coding agent or run collection with
-  `--force-close`. Persistent unreadable state is not silently discarded.
+  `--force-close`. Persistent unreadable source state is not silently discarded.
+  Restore atomically replaces normal read-only files (such as nested Git object
+  files); it still reports an error when the parent directory is not writable.
 - **GitHub large-file rejection:** upgrade, collect again, then push. Current
   archives are split into five-MiB parts.
 - **Pull conflict:** review reported files or explicitly use `pull --ignore`.

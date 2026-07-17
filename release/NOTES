@@ -21,3 +21,4 @@
 - [x] Compress once and split large archives into 5 MiB Git-safe parts
 - [x] Show live collection, restoration and Git transfer progress
 - [x] Retry transient file races without hiding persistent permission errors
+- [x] Atomically replace read-only agent files during restore

@@ -1,6 +1,6 @@
-1bd1122727c66055ef2e4e5d01179f98a89dba66872e3a9cfcdef839ecad6028  ./contix-darwin-amd64
-7bfcc6819d8b7c2b210ffdca0d9511cbb9190c4a3d587640eeb1db9725e52b33  ./contix-darwin-arm64
-a1a86fa196f42de7933f4010d8bfa8251d30361d6758f429f271f99a86d9ca79  ./contix-linux-amd64
-8a3fcfc245ff12f45a428afe59ca1427cdd8a89d3c6cfc976dc5a430f89cc017  ./contix-linux-arm64
-b090d437218f2e10c45833016d6abbdc896247da88cc756ea19e1548fee05f7c  ./contix-windows-amd64.exe
-c807f6de473c94484d7d80d2d958cda82d23a072d83363dce64b21b6b7355359  ./contix-windows-arm64.exe
+7de71f0e28eb5fa9c90a2498841bca47bb6e299a26070e95b5edb9d2cb6fbe7f  ./contix-darwin-amd64
+395fc55b3c17783004863ccc3831ddc95b90590c7aa07513fc921d3c2efeffe5  ./contix-darwin-arm64
+d9dc3e6b215e74524bc2aa6a893bbc30af603c2287f713e1e0667f0fe4f5074e  ./contix-linux-amd64
+7d52b32f6af133fa639fcbf01fc502c5119c51d1c8b33746ad65fef20eaeb064  ./contix-linux-arm64
+fdd872bca45002c9201503276cf0cd5f3a9410ad6064a1d341413498dd1eff0c  ./contix-windows-amd64.exe
+76ff11c8fb88b3503faf2b4a58e6d3ad09346eeeb918d023ff0ebddc7a967b6a  ./contix-windows-arm64.exe

@@ -48,6 +48,43 @@ func TestCreateExtractVerifyRoundTrip(t *testing.T) {
 	}
 }
 
+func TestExtractReplacesReadOnlyExistingFile(t *testing.T) {
+	src := t.TempDir()
+	path := filepath.Join(src, "objects", "readonly")
+	writeFileT(t, path, "synced")
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(t.TempDir(), BundleName)
+	if _, err := Create(src, []string{"objects/readonly"}, bundle, NewManifest("test", "", src)); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := t.TempDir()
+	local := filepath.Join(dest, "objects", "readonly")
+	writeFileT(t, local, "local")
+	if err := os.Chmod(local, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Extract(bundle, dest); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "synced" {
+		t.Fatalf("restored content = %q, want synced", got)
+	}
+	info, err := os.Stat(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o444 {
+		t.Fatalf("restored mode = %o, want 444", info.Mode().Perm())
+	}
+}
+
 func TestCreateSplitsAndExtractsLargeCompressedBundle(t *testing.T) {
 	oldPartSize := bundlePartSize
 	bundlePartSize = 1024
