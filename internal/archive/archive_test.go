@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 )
@@ -122,8 +121,8 @@ func TestCreateSkipsFileThatDisappearsAfterDiscovery(t *testing.T) {
 func TestCreateRetriesPermissionUntilRuntimeFileDisappears(t *testing.T) {
 	src := t.TempDir()
 	writeFileT(t, filepath.Join(src, "stable.txt"), "kept")
-	heartbeat := filepath.Join(src, "ticker_heartbeat")
-	writeFileT(t, heartbeat, "temporary")
+	lock := filepath.Join(src, "active.lock")
+	writeFileT(t, lock, "temporary")
 
 	oldOpen := openStageSource
 	oldRetries := stagePermissionRetries
@@ -137,7 +136,7 @@ func TestCreateRetriesPermissionUntilRuntimeFileDisappears(t *testing.T) {
 	stagePermissionRetryDelay = 0
 	attempts := 0
 	openStageSource = func(path string) (*os.File, error) {
-		if path != heartbeat {
+		if path != lock {
 			return os.Open(path)
 		}
 		attempts++
@@ -151,7 +150,7 @@ func TestCreateRetriesPermissionUntilRuntimeFileDisappears(t *testing.T) {
 	}
 
 	bundle := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	m, err := Create(src, []string{"stable.txt", "ticker_heartbeat"}, bundle, NewManifest("test", "", src))
+	m, err := Create(src, []string{"stable.txt", "active.lock"}, bundle, NewManifest("test", "", src))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,57 +185,6 @@ func TestOpenStageFileKeepsStablePermissionFailureFatal(t *testing.T) {
 	}
 	if attempts != 3 {
 		t.Fatalf("open attempts = %d, want 3", attempts)
-	}
-}
-
-func TestCreateOmitsOnlyConfiguredUnreadableVolatilePath(t *testing.T) {
-	src := t.TempDir()
-	writeFileT(t, filepath.Join(src, "stable.txt"), "kept")
-	heartbeat := filepath.Join(src, "cron", "ticker_heartbeat")
-	writeFileT(t, heartbeat, "runtime timestamp")
-
-	oldOpen := openStageSource
-	oldRetries := stagePermissionRetries
-	oldDelay := stagePermissionRetryDelay
-	defer func() {
-		openStageSource = oldOpen
-		stagePermissionRetries = oldRetries
-		stagePermissionRetryDelay = oldDelay
-	}()
-	stagePermissionRetries = 1
-	stagePermissionRetryDelay = 0
-	openStageSource = func(path string) (*os.File, error) {
-		if path == heartbeat {
-			return nil, &os.PathError{Op: "open", Path: path, Err: os.ErrPermission}
-		}
-		return os.Open(path)
-	}
-
-	bundle := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	m, err := Create(
-		src,
-		[]string{"stable.txt", "cron/ticker_heartbeat"},
-		bundle,
-		NewManifest("hermes", "", src),
-		"cron/ticker_heartbeat",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(m.Omitted, []string{"cron/ticker_heartbeat"}) {
-		t.Fatalf("omitted = %v", m.Omitted)
-	}
-	if len(m.Files) != 1 || m.Files[0].Path != "stable.txt" {
-		t.Fatalf("manifest files = %#v, want only stable.txt", m.Files)
-	}
-
-	if _, err := Create(
-		src,
-		[]string{"cron/ticker_heartbeat"},
-		filepath.Join(t.TempDir(), "bundle.tar.gz"),
-		NewManifest("hermes", "", src),
-	); !errors.Is(err, os.ErrPermission) {
-		t.Fatalf("unconfigured permission error = %v, want permission denied", err)
 	}
 }
 

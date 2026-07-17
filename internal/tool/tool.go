@@ -1,5 +1,5 @@
-// Package tool defines syncable agent and machine state roots and how to detect
-// a related tool version.
+// Package tool defines syncable coding-agent state roots and how to detect a
+// related tool version.
 package tool
 
 import (
@@ -20,8 +20,8 @@ type Tool struct {
 	Name string
 	// Home returns the absolute state directory for this tool on this machine.
 	Home func() string
-	// Include is an optional allowlist rooted at Home. Agent and SSH targets leave
-	// it empty to sync everything; hosts uses it to select /etc/hosts, not /etc.
+	// Include is an optional allowlist rooted at Home. An empty list syncs the
+	// complete coding-agent state root.
 	Include []string
 	// Binary is the executable probed with --version. Empty disables probing.
 	Binary string
@@ -29,29 +29,31 @@ type Tool struct {
 	// separate from Binary because some products have several state roots or
 	// helper processes.
 	Processes []string
-	// VolatileUnreadable lists runtime-only path patterns that may be omitted if
-	// they remain unreadable after archive retries. Durable paths stay fatal.
-	VolatileUnreadable []string
 	// Version detects the installed tool version from its state dir. Returns
 	// "" when unknown.
 	Version func(home string) string
-	// RestoreFallback is used when WriteProbe cannot be opened for writing. It
-	// lets privileged files be safely staged without touching the local copy.
-	RestoreFallback func() string
-	WriteProbe      string
 }
 
 // Registry returns all known tools keyed by name.
 func Registry() map[string]Tool {
 	return map[string]Tool{
-		"antigravity": antigravity(),
-		"claude":      claude(),
-		"codex":       codex(),
-		"hermes":      hermes(),
-		"hosts":       hosts(),
-		"kiro":        kiro(),
-		"openclaw":    openclaw(),
-		"ssh":         sshConfig(),
+		"aider":           aider(),
+		"amp":             amp(),
+		"antigravity":     antigravity(),
+		"auggie":          auggie(),
+		"claude":          claude(),
+		"cline":           cline(),
+		"codex":           codex(),
+		"continue":        continueCLI(),
+		"copilot":         copilot(),
+		"cursor":          cursor(),
+		"droid":           droid(),
+		"goose":           goose(),
+		"goose-config":    gooseConfig(),
+		"kiro":            kiro(),
+		"opencode":        openCode(),
+		"opencode-config": openCodeConfig(),
+		"qwen":            qwen(),
 	}
 }
 
@@ -72,10 +74,21 @@ func Names() []string {
 func RetiredNames() []string {
 	return []string{
 		"antigravity-editor", "antigravity-extensions",
-		"cursor", "cursor-home", "kiro-editor",
+		"cursor-home", "kiro-editor",
 		"vscode", "vscode-home", "vscodium", "vscodium-home",
 		"void", "void-home", "windsurf", "windsurf-agent", "windsurf-home",
+		"hermes", "openclaw", "ssh", "hosts",
 	}
+}
+
+// Group expands coding agents that use more than one official state root.
+func Group(name string) ([]string, bool) {
+	groups := map[string][]string{
+		"goose":    {"goose", "goose-config"},
+		"opencode": {"opencode", "opencode-config"},
+	}
+	items, ok := groups[name]
+	return items, ok
 }
 
 // Lookup returns a tool by name.
@@ -120,21 +133,6 @@ func claude() Tool {
 	}
 }
 
-func hermes() Tool {
-	return Tool{
-		Name:      "hermes",
-		Home:      platform.HermesHome,
-		Binary:    "hermes",
-		Processes: []string{"hermes", "hermes-agent"},
-		VolatileUnreadable: []string{
-			"cron/ticker_heartbeat", "cron/ticker_last_success", "cron/.hb_*.tmp",
-			"profiles/*/cron/ticker_heartbeat", "profiles/*/cron/ticker_last_success",
-			"profiles/*/cron/.hb_*.tmp",
-		},
-		Version: func(home string) string { return "" },
-	}
-}
-
 func kiro() Tool {
 	return Tool{
 		Name:      "kiro",
@@ -153,35 +151,94 @@ func antigravity() Tool {
 	}
 }
 
-func openclaw() Tool {
+func cursor() Tool {
 	return Tool{
-		Name:      "openclaw",
-		Home:      platform.OpenClawHome,
-		Binary:    "openclaw",
-		Processes: []string{"openclaw", "openclaw-gatewa", "openclaw-gateway"},
+		Name:      "cursor",
+		Home:      platform.CursorHome,
+		Include:   []string{"mcp.json", "cli-config.json", "rules", "commands", "skills", "hooks", "hooks.json"},
+		Binary:    "cursor-agent",
+		Processes: []string{"cursor-agent"},
 	}
 }
 
-func sshConfig() Tool {
+func openCode() Tool {
 	return Tool{
-		Name:   "ssh",
-		Home:   platform.SSHHome,
-		Binary: "ssh",
+		Name:      "opencode",
+		Home:      platform.OpenCodeDataHome,
+		Binary:    "opencode",
+		Processes: []string{"opencode"},
 	}
 }
 
-func hosts() Tool {
+func openCodeConfig() Tool {
 	return Tool{
-		Name:            "hosts",
-		Home:            platform.HostsDir,
-		Include:         []string{"hosts"},
-		RestoreFallback: platform.HostsStagingDir,
-		WriteProbe:      "hosts",
+		Name:      "opencode-config",
+		Home:      platform.OpenCodeConfigHome,
+		Binary:    "opencode",
+		Processes: []string{"opencode"},
 	}
 }
 
-// IncludedFiles walks the target root and returns every regular file and
-// symlink. Hosts is the sole allowlisted target because its root is /etc.
+func copilot() Tool {
+	return Tool{Name: "copilot", Home: platform.CopilotHome, Binary: "copilot", Processes: []string{"copilot"}}
+}
+
+func cline() Tool {
+	return Tool{
+		Name: "cline", Home: platform.ClineHome,
+		Include: []string{"data/settings", "data/teams", "data/sessions", "plugins", "hooks"},
+		Binary:  "cline", Processes: []string{"cline"},
+	}
+}
+
+func continueCLI() Tool {
+	return Tool{
+		Name: "continue", Home: platform.ContinueHome,
+		Include: []string{
+			"config.yaml", "config.json", "config.ts", ".env", "permissions.yaml",
+			"rules", "models", "mcpServers", "prompts", "agents", "sessions",
+		},
+		Binary: "cn", Processes: []string{"cn"},
+	}
+}
+
+func aider() Tool {
+	return Tool{
+		Name: "aider", Home: platform.Home,
+		Include: []string{
+			".aider.conf.yml", ".aider.model.settings.yml", ".aider.model.metadata.json",
+			".aider.input.history", ".aider.chat.history.md", ".aider.llm.history",
+		},
+		Binary: "aider", Processes: []string{"aider"},
+	}
+}
+
+func qwen() Tool {
+	return Tool{Name: "qwen", Home: platform.QwenHome, Binary: "qwen", Processes: []string{"qwen"}}
+}
+
+func droid() Tool {
+	return Tool{Name: "droid", Home: platform.DroidHome, Binary: "droid", Processes: []string{"droid"}}
+}
+
+func amp() Tool {
+	return Tool{Name: "amp", Home: platform.AmpHome, Binary: "amp", Processes: []string{"amp"}}
+}
+
+func auggie() Tool {
+	return Tool{Name: "auggie", Home: platform.AuggieHome, Binary: "auggie", Processes: []string{"auggie"}}
+}
+
+func goose() Tool {
+	return Tool{Name: "goose", Home: platform.GooseDataHome, Binary: "goose", Processes: []string{"goose"}}
+}
+
+func gooseConfig() Tool {
+	return Tool{Name: "goose-config", Home: platform.GooseConfigHome, Binary: "goose", Processes: []string{"goose"}}
+}
+
+// IncludedFiles walks the target root and returns its selected regular files
+// and symlinks.
 func (t Tool) IncludedFiles() ([]string, error) {
 	home := t.Home()
 	info, err := os.Stat(home)
@@ -239,8 +296,8 @@ func includeMatchAny(rel string, patterns []string) bool {
 	return false
 }
 
-// includeMatch uses root-relative semantics: an allowlisted "hosts" means only
-// <root>/hosts, never a nested path with the same basename.
+// includeMatch uses root-relative semantics: an allowlisted file means only
+// that exact root file, never a nested path with the same basename.
 func includeMatch(rel, pattern string) bool {
 	rel = filepath.ToSlash(rel)
 	pattern = filepath.ToSlash(pattern)

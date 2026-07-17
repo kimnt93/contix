@@ -1,250 +1,150 @@
 # contix
 
-**Sync your coding agents and portable machine configuration through one GitHub repo.**
+**Sync AI coding-agent state between computers through one private Git repository.**
 
-`contix` snapshots the state of [Codex](https://github.com/openai/codex),
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code), Hermes Agent,
-[Kiro](https://kiro.dev/), [Google Antigravity](https://antigravity.google/) and
-[OpenClaw](https://openclaw.ai/), along with SSH state and the system hosts file.
-IDE application data, extensions, caches and workspace storage are not synced.
-Everything selected is compressed into a single git repo you own. On a new
-machine, one pull restores the available state so you can pick up where you
-left off.
+Contix collects the configuration, credentials, instructions, skills, memories
+and sessions of supported coding agents. It deliberately does not sync general
+personal agents, SSH/hosts configuration, full IDE application data, extension
+binaries, indexes or caches.
 
-It is a single, dependency-free binary written in Go (1.26). It shells out to
-your existing `git`, so it reuses your SSH keys, credentials and identity.
+Supported coding agents:
 
-> **The name** — *contix* blends **cont**ext and **-x** (sync/exchange): it keeps
-> the working *context* of your AI agents in sync across machines.
+- Codex
+- Claude Code
+- Gemini CLI / Google Antigravity
+- Kiro CLI
+- Cursor Agent and Cursor CLI
+- OpenCode
+- GitHub Copilot CLI
+- Cline CLI
+- Continue CLI (`cn`)
+- Aider
+- Goose
+- Qwen Code
+- Factory Droid
+- Amp
+- Auggie CLI
 
-```
-  Machine A                    GitHub                    Machine B
-  ┌────────────────┐                                   ┌────────────────┐
-  │ agent state    │──┐      ┌───────────┐        ┌──▶ │ agent state    │
-  │ SSH config     │──┼─push▶│ one repo  │──pull──┤    │ SSH config     │
-  │ hosts          │──┘      │ (latest)  │        └──▶ │ hosts          │
-  └────────────────┘         └───────────┘             └────────────────┘
-```
-
----
-
-## Why
-
-Moving to a new laptop means losing your agents' accumulated memory and your
-carefully tuned settings. Existing dotfile/sync tools compress and upload files,
-but none understand multiple AI coding agents. `contix` does:
-
-- **Agent-only coverage** — Codex, Claude Code, Hermes, Kiro, Antigravity and
-  OpenClaw agent state are collected together with SSH and hosts. IDE state is
-  deliberately excluded. Every regular file and symlink below each configured
-  agent root is included, without credential/cache/runtime exclusion lists.
-- **One repo, latest wins** — everything lands in a single git repo that always
-  holds the latest snapshot. No servers, no accounts, no lock-in.
-- **GitHub-size safe** — archives use maximum gzip compression and are split
-  into 5 MiB parts when necessary, staying below GitHub's per-file limit.
-- **Cross-platform & portable** — Linux, macOS, Windows. Paths embedded in
-  session files are rewritten to the new machine's home directory automatically.
-
----
+Each target becomes a compressed `tar.gz` stream. Streams larger than 5 MiB are
+split into Git-safe parts and reassembled automatically during pull.
 
 ## Install
 
-Prebuilt binaries for every supported platform are committed under [`dist/`](dist/),
-so **you don't need Go to install** — just `make`, `git` and a shell.
+Prebuilt Linux, macOS and Windows binaries for amd64 and arm64 are committed in
+[`dist/`](dist/), so installation does not require Go:
 
 ```bash
-git clone https://github.com/kimnt93/contix.git && cd contix
-make install      # installs the prebuilt binary for your OS/arch
-make upgrade      # later: fast-forward this checkout and reinstall latest
+git clone https://github.com/kimnt93/contix.git
+cd contix
+make install
 ```
 
-Both commands print the installed version and its feature checklist. Release
-metadata is kept in two easy-to-edit files:
-
-- [`release/VERSION`](release/VERSION) — one version string, such as `0.9.0`
-- [`release/NOTES`](release/NOTES) — one `- [x]` line per shipped feature
-
-The files are embedded into the binary during the build, so they are not needed
-at runtime. Edit them before running `make release` for a new version.
-
-`make install` auto-detects your platform (Linux/macOS/Windows, amd64/arm64),
-copies the matching binary from `dist/`, and installs it to a bin directory:
-
-- Linux/macOS: `/usr/local/bin` if writable, else `~/.local/bin`
-- Windows: `%LOCALAPPDATA%\contix\bin`
-
-Override the location with `make install PREFIX=/usr/local`. Make sure the
-target directory is on your `PATH`.
-
-### Building from source (optional)
-
-If you'd rather build yourself (requires Go 1.26+):
+Upgrade later with:
 
 ```bash
-make build        # compile ./contix for the host platform
-make release      # cross-compile all platforms into ./dist and refresh binaries
+make upgrade
 ```
 
----
+Installation and upgrade print the embedded version and feature checklist from
+[`release/VERSION`](release/VERSION) and [`release/NOTES`](release/NOTES).
 
-## Quick start
+## Usage
 
-### 1. First machine
-
-Create an **empty, private** git repo on GitHub (e.g. `you/dev-state`), then:
+First computer:
 
 ```bash
 contix init --remote git@github.com:you/dev-state.git
-contix collect       # collect available state and commit locally
-contix push          # upload the collected state to GitHub
+contix collect
+contix push
 ```
 
-The remote may be **SSH** (`git@github.com:you/dev-state.git`) or **HTTPS**
-(`https://github.com/you/dev-state.git`). SSH uses your existing SSH key; HTTPS
-uses your git credential helper or a Personal Access Token.
-
-### 2. New machine
-
-Install `contix`, then:
+New computer:
 
 ```bash
-contix init --remote git@github.com:you/dev-state.git   # clones existing state
-contix pull                                             # restores everything
+contix init --remote git@github.com:you/dev-state.git
+contix pull
 ```
 
-Your available agent state and portable machine configuration are back.
+The four commands are intentionally simple:
 
----
-
-## Commands
-
-| Command | What it does |
+| Command | Purpose |
 |---|---|
-| `contix init` | Configure the sync repo. Clones the remote if it already has data. |
-| `contix collect` | Collect available agent and machine state locally. |
-| `contix push` | Upload the collected state to the configured remote. |
-| `contix pull` | Pull from the remote and restore available state. |
+| `contix init` | Configure or clone the private sync repository. |
+| `contix collect` | Collect, compress and commit coding-agent state locally. |
+| `contix push` | Upload the collected commit. |
+| `contix pull` | Download and restore coding-agent state. |
 
-Long operations stay visible: collection and restoration show an activity
-spinner, while Git uploads and downloads stream their native percentage output.
+Optional filters:
 
-Optional collection filter:
+```bash
+contix collect --tools codex,claude,cursor
+contix collect --tools opencode,goose
+contix collect --tools codex --force-close
+```
 
-- `contix collect --tools codex,kiro,ssh` — collect selected targets only.
-- `contix collect --force-close` — stop running synced applications before
-  collecting all targets.
-- `contix collect --tools codex --force-close` — stop and collect only Codex.
+`opencode` expands to its official data and configuration roots. `goose`
+expands to its platform data root and legacy/global config root.
 
-`--force-close` may terminate active agent sessions, so it is never enabled by
-default. Applications are asked to exit first and are forcibly terminated after
-two seconds if they remain running.
+Normal pull reports differing local files and leaves that entire target
+unchanged. Use `contix pull --ignore` only when the synced snapshot should
+overwrite local conflicts.
 
-`contix pull` protects differing local files by reporting conflicts and leaving
-that target unchanged. Use `contix pull --ignore` when you intentionally want
-the synced snapshot to overwrite those conflicts.
+## What is collected
 
-See [docs/usage.md](docs/usage.md) for the full reference and internals.
+- **Codex** — complete `$CODEX_HOME` or `~/.codex` state.
+- **Claude Code** — complete `$CLAUDE_CONFIG_DIR` or `~/.claude` state.
+- **Gemini CLI / Antigravity** — complete `$ANTIGRAVITY_HOME`,
+  `$GEMINI_CLI_HOME/.gemini` or `~/.gemini` state, honoring Gemini's user
+  settings, global instructions and sessions.
+- **Kiro CLI** — complete `$KIRO_HOME` or `~/.kiro` state.
+- **Cursor Agent** — only `mcp.json`, `cli-config.json`, rules, commands, skills
+  and hooks below `$CONTIX_CURSOR_HOME` or `~/.cursor`. Full Cursor IDE data,
+  extensions and caches are excluded.
+- **OpenCode** — `$OPENCODE_CONFIG_DIR` or
+  `$XDG_CONFIG_HOME/opencode`, plus `$XDG_DATA_HOME/opencode` for credentials,
+  sessions and databases.
+- **GitHub Copilot CLI** — complete `$COPILOT_HOME` or `~/.copilot` state. Its
+  separately located platform cache is not collected.
+- **Cline CLI** — settings, teams, sessions, plugins and hooks from
+  `$CONTIX_CLINE_HOME` or `~/.cline`; logs and unrelated IDE data are excluded.
+- **Continue CLI** — portable config, permissions, rules, models, MCP servers,
+  prompts, agents and sessions from `$CONTIX_CONTINUE_HOME` or `~/.continue`.
+- **Aider** — user-level `.aider.*` configuration and history files from the
+  home directory. Contix does not scan Git repositories for project files.
+- **Goose** — `$GOOSE_PATH_ROOT` when set; otherwise its platform data root and
+  global config root, including coding sessions and provider configuration.
+- **Qwen Code** — complete `$CONTIX_QWEN_HOME` or `~/.qwen` state, including
+  user settings, instructions, skills and recorded sessions.
+- **Factory Droid** — complete `$CONTIX_DROID_HOME` or `~/.factory` state,
+  including settings, MCP, droids, commands, hooks, skills and sessions.
+- **Amp** — complete `$CONTIX_AMP_HOME` or `~/.config/amp` state, including
+  user settings, instructions, skills and plugins.
+- **Auggie CLI** — complete `$CONTIX_AUGGIE_HOME` or `~/.augment` coding-agent
+  state.
 
----
+If a coding agent is absent, Contix keeps its previous snapshot. The next
+collection removes old Hermes, OpenClaw, SSH, hosts and retired IDE bundles from
+the sync repository; local source directories are never deleted.
 
-## What gets synced
+## Security
 
-`contix` syncs every regular file and symlink under each configured target root.
-Credentials, keys, logs, caches, locks, runtime files and nested `.git`
-directories are included. Non-portable special files such as sockets and device
-nodes cause collection to fail rather than being silently skipped.
+Use a private, trusted repository. Coding-agent roots can contain access tokens,
+OAuth credentials, prompts, transcripts and source context. Contix does not
+encrypt archives beyond Git transport.
 
-**Codex** (`~/.codex`, or `$CODEX_HOME`): everything, including configuration,
-credentials, histories, rules, skills, memories, sessions, databases, logs,
-caches, plugins, temporary state and nested repositories.
+Transient files that disappear during collection are omitted because no bytes
+remain. Permission failures are retried briefly, but a persistent unreadable
+coding-agent file remains an error rather than being silently lost.
 
-**Claude Code** (`~/.claude`, or `$CLAUDE_CONFIG_DIR`): everything, including
-credentials, `CLAUDE.md`, settings, project registries, histories, transcripts,
-skills, rules, plugins, downloads, backups, caches and runtime files.
-
-**Hermes Agent** (`~/.hermes`, or `$HERMES_HOME`): everything, including
-configuration, credentials, pairing data, memories, skills, sessions, cron,
-databases, caches, logs, sandboxes, runtime binaries and installed source/venv.
-
-**Kiro** (`~/.kiro`, or `$KIRO_HOME`): everything, including global settings,
-agents, prompts, steering, skills, CLI sessions, credentials, locks, logs and
-caches.
-
-**Google Antigravity** (`~/.gemini`, or `$ANTIGRAVITY_HOME`): everything under
-the Gemini/Antigravity state root, including global rules, authentication,
-installation IDs, artifacts, knowledge, conversations, MCP configuration,
-temporary files, locks, logs and caches.
-
-**OpenClaw** (`~/.openclaw`, or `$OPENCLAW_STATE_DIR`): everything under its
-mutable state root, including `openclaw.json`, credentials, secrets, per-agent
-state, SQLite stores, sessions, transcripts, memories, skills, automation and
-workspaces. `OPENCLAW_HOME` and named profiles are also honored.
-
-**IDEs are not synced:** Cursor, Windsurf, VS Code, VSCodium, Void, Kiro IDE and
-Antigravity IDE application data/extensions are excluded. Upgrading to this
-version removes their old top-level bundles from the sync repository during the
-next `contix collect`; it never deletes local IDE files.
-
-**SSH** (`~/.ssh`, or `$CONTIX_SSH_HOME`): everything, including configuration,
-private/public keys, `known_hosts`, authorized keys and backup directories.
-
-**Hosts** (`/etc/hosts`, or the Windows equivalent): collected as its own
-bundle. If the destination is not writable, `pull` keeps the local hosts file
-unchanged and stages the synced copy under contix's `pending/hosts` directory,
-printing both paths for manual review.
-
-Each target is stored as one recursive `tar.gz` stream. When its compressed size
-exceeds 5 MiB, contix writes `bundle.tar.gz.part-000`, `part-001`, and so on.
-`pull` reassembles and verifies the parts automatically.
-
----
-
-## Security notes
-
-- **Use only a private, trusted repository.** Credentials, access tokens, SSH
-  private keys, project context, session contents and machine state are
-  intentionally synced.
-- Anyone who can read the sync repository can potentially access your accounts
-  and machines. Contix does not encrypt archive contents beyond Git transport.
-- `contix` uses your existing `git` and its credential setup; it never handles
-  the remote's Git authentication itself.
-- Stop synced applications before `collect` when possible, or explicitly use
-  `contix collect --force-close`. Files that disappear during collection are
-  omitted because they no longer exist. Transient permission failures from
-  heartbeat/lock creation are retried for two seconds; stable permission and
-  other read errors remain fatal. Hermes ticker liveness markers are the sole
-  exception: if still unreadable after retries, they are reported and omitted
-  because they contain only machine-runtime health timestamps.
-
----
-
-## Limitations
-
-- `contix` syncs the **latest** snapshot. History lives in the git repo's commits,
-  but `contix` itself always restores the most recent push.
-- If a target is not installed or has no matching files, its previous remote
-  snapshot is retained. If the remote has no bundle for a target, `pull` keeps
-  that target's existing local state.
-- A normal `pull` does not overwrite differing local files. It reports every
-  conflict and keeps that target unchanged; `pull --ignore` explicitly accepts
-  overwriting with the synced snapshot.
-
-If GitHub previously rejected an oversized bundle, upgrade and run
-`contix collect` again. Contix rewrites unpublished snapshot history so the old
-oversized object is not included by the following `contix push`.
-
----
+See [docs/usage.md](docs/usage.md) for path details, repository layout and
+troubleshooting.
 
 ## Development
 
 ```bash
-make build      # build ./contix
-make test       # run tests
-make vet        # go vet
-make fmt        # gofmt -w .
-make release    # cross-compile all platforms into ./dist
+make build
+make test
+make vet
+make fmt-check
+make release
 ```
-
-## License
-
-MIT (see LICENSE).

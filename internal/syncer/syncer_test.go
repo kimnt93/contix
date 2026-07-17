@@ -59,47 +59,6 @@ func TestPullMissingSnapshotKeepsLocalState(t *testing.T) {
 	}
 }
 
-func TestPullStagesProtectedTargetWithoutTouchingDestination(t *testing.T) {
-	repo := t.TempDir()
-	source := t.TempDir()
-	if err := os.WriteFile(filepath.Join(source, "protected"), []byte("synced"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	target := tool.Tool{
-		Name:    "hosts",
-		Home:    func() string { return source },
-		Include: []string{"protected"},
-	}
-	if _, err := Push(config.Config{RepoPath: repo}, target); err != nil {
-		t.Fatal(err)
-	}
-
-	destination := t.TempDir()
-	localFile := filepath.Join(destination, "local-only")
-	if err := os.WriteFile(localFile, []byte("keep"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	staging := t.TempDir()
-	target.Home = func() string { return destination }
-	target.WriteProbe = "protected" // absent, so restoration must be staged
-	target.RestoreFallback = func() string { return staging }
-	res, err := Pull(config.Config{RepoPath: repo}, target, nil, true, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.DeferredPath != filepath.Join(staging, "protected") {
-		t.Fatalf("deferred path = %q", res.DeferredPath)
-	}
-	got, err := os.ReadFile(res.DeferredPath)
-	if err != nil || string(got) != "synced" {
-		t.Fatalf("staged state = %q, %v", got, err)
-	}
-	got, err = os.ReadFile(localFile)
-	if err != nil || string(got) != "keep" {
-		t.Fatalf("local destination changed: %q, %v", got, err)
-	}
-}
-
 func TestPullConflictRequiresIgnoreToOverwrite(t *testing.T) {
 	repo := t.TempDir()
 	source := t.TempDir()

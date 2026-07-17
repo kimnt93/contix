@@ -1,5 +1,5 @@
-// Package syncer orchestrates collecting agent and machine state into the sync
-// repo and restoring it on another machine with verification and path rewriting.
+// Package syncer orchestrates collecting coding-agent state into the sync repo
+// and restoring it on another machine with verification and path rewriting.
 package syncer
 
 import (
@@ -23,7 +23,6 @@ type PushResult struct {
 	Bytes   int64
 	Version string
 	Parts   int
-	Omitted int
 	Skipped string // reason, if skipped
 }
 
@@ -39,8 +38,6 @@ type PullResult struct {
 	FilesRewrite  int
 	Skipped       string
 	Conflicts     []string // local paths that differ and were not overwritten
-	DeferredPath  string   // user-writable copy when the destination needs elevation
-	Destination   string
 }
 
 // toolDir returns the repo subdirectory for a tool.
@@ -73,7 +70,7 @@ func Push(cfg config.Config, t tool.Tool) (PushResult, error) {
 	res.Version = version
 
 	m := archive.NewManifest(t.Name, version, home)
-	m, err = archive.Create(home, rels, bundlePath, m, t.VolatileUnreadable...)
+	m, err = archive.Create(home, rels, bundlePath, m)
 	if err != nil {
 		return res, err
 	}
@@ -86,7 +83,6 @@ func Push(cfg config.Config, t tool.Tool) (PushResult, error) {
 		total += fe.Size
 	}
 	res.Files = len(m.Files)
-	res.Omitted = len(m.Omitted)
 	res.Bytes = total
 	res.Parts = len(m.BundleParts)
 	if res.Parts == 0 {
@@ -118,14 +114,7 @@ func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrit
 
 	home := t.Home()
 	restoreRoot := home
-	if t.RestoreFallback != nil && t.WriteProbe != "" {
-		res.Destination = filepath.Join(home, filepath.FromSlash(t.WriteProbe))
-		if !writableFile(res.Destination) {
-			restoreRoot = t.RestoreFallback()
-			res.DeferredPath = filepath.Join(restoreRoot, filepath.FromSlash(t.WriteProbe))
-		}
-	}
-	if !ignoreConflicts && res.DeferredPath == "" {
+	if !ignoreConflicts {
 		conflicts, err := archive.Conflicts(home, m)
 		if err != nil {
 			return res, err
@@ -159,7 +148,7 @@ func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrit
 		res.SourceVersion == res.LocalVersion
 
 	// Path rewriting for cross-machine resume.
-	if rewrite && res.DeferredPath == "" {
+	if rewrite {
 		rw := pathrewrite.New(m.SourceHome, userMaps)
 		if rw.Active() {
 			files, dirs, err := rw.Apply(restoreRoot)
@@ -171,14 +160,6 @@ func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrit
 		}
 	}
 	return res, nil
-}
-
-func writableFile(path string) bool {
-	f, err := os.OpenFile(path, os.O_WRONLY, 0)
-	if err != nil {
-		return false
-	}
-	return f.Close() == nil
 }
 
 var versionRe = regexp.MustCompile(`\d+\.\d+\.\d+[\w.\-]*`)

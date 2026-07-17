@@ -8,16 +8,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 )
 
-// Hermes and other active agents may briefly create mode-000 heartbeat/lock
-// files before replacing or deleting them. Retry only permission failures;
-// stable unreadable files still fail after this bounded window.
+// Active coding agents may briefly create mode-000 lock or temporary files
+// before replacing or deleting them. Retry only permission failures; stable
+// unreadable files still fail after this bounded window.
 var stagePermissionRetries = 40
 var stagePermissionRetryDelay = 50 * time.Millisecond
 var openStageSource = os.Open
@@ -25,7 +24,7 @@ var openStageSource = os.Open
 // Create bundles the given relative files (rooted at srcRoot) into a gzip'd tar
 // at bundlePath and returns a completed manifest. Files are stored using their
 // forward-slash relative paths so archives are portable across OSes.
-func Create(srcRoot string, rels []string, bundlePath string, m Manifest, volatileUnreadable ...string) (Manifest, error) {
+func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manifest, error) {
 	bundleDir := filepath.Dir(bundlePath)
 	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
 		return m, err
@@ -48,7 +47,6 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest, volati
 
 	sort.Strings(rels)
 	m.Files = m.Files[:0]
-	m.Omitted = m.Omitted[:0]
 
 	for _, rel := range rels {
 		abs := filepath.Join(srcRoot, filepath.FromSlash(rel))
@@ -58,10 +56,6 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest, volati
 			// files. A discovered path that is already gone has no bytes left to
 			// sync; every path that still exists remains included.
 			if os.IsNotExist(err) {
-				continue
-			}
-			if os.IsPermission(err) && matchesAnyPath(rel, volatileUnreadable) {
-				m.Omitted = append(m.Omitted, rel)
 				continue
 			}
 			return m, fmt.Errorf("inspect %s: %w", rel, err)
@@ -92,10 +86,6 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest, volati
 		entry, staged, err := stageFile(abs)
 		if err != nil {
 			if os.IsNotExist(err) {
-				continue
-			}
-			if os.IsPermission(err) && matchesAnyPath(rel, volatileUnreadable) {
-				m.Omitted = append(m.Omitted, rel)
 				continue
 			}
 			return m, fmt.Errorf("stage %s: %w", rel, err)
@@ -133,16 +123,6 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest, volati
 		return m, err
 	}
 	return m, nil
-}
-
-func matchesAnyPath(rel string, patterns []string) bool {
-	for _, pattern := range patterns {
-		matched, err := path.Match(pattern, rel)
-		if err == nil && matched {
-			return true
-		}
-	}
-	return false
 }
 
 func writeSymlink(tw *tar.Writer, rel, target string, info os.FileInfo) error {

@@ -1,17 +1,21 @@
-- [x] Sync every regular file and symlink under each configured target root
-- [x] Sync Codex, Claude Code, Hermes, Kiro and Google Antigravity agent state
-- [x] Sync complete OpenClaw config, credentials, agents, sessions and workspaces
-- [x] Exclude IDE application data, extensions, caches and workspace storage
-- [x] Remove retired IDE bundles from the sync repo on the next collection
-- [x] Sync complete SSH state including keys, known hosts and backups
-- [x] Sync the system hosts file with permission-safe staging
-- [x] Preserve previous snapshots when a target is missing
-- [x] Preserve local state when no remote bundle exists
-- [x] Detect pull conflicts before overwriting local target state
-- [x] Support contix pull --ignore for explicit conflict overwrite
+- [x] Sync Codex and Claude Code complete user state
+- [x] Sync Gemini CLI and Google Antigravity state
+- [x] Sync Kiro CLI coding-agent state
+- [x] Sync Cursor Agent rules, MCP, skills, commands, hooks and CLI permissions
+- [x] Sync OpenCode configuration, credentials, sessions and data
+- [x] Sync GitHub Copilot CLI complete configuration and session state
+- [x] Sync Cline CLI settings, teams, sessions, hooks and plugins
+- [x] Sync Continue CLI configuration, rules, permissions and sessions
+- [x] Sync Aider user configuration and histories
+- [x] Sync Goose coding-agent configuration, data and sessions
+- [x] Sync Qwen Code complete user state
+- [x] Sync Factory Droid complete user state
+- [x] Sync Amp settings, instructions, skills and plugins
+- [x] Sync Auggie CLI complete coding-agent state
+- [x] Exclude Hermes, OpenClaw, SSH, hosts and complete IDE application data
+- [x] Remove retired non-coding bundles on the next collection
+- [x] Preserve previous snapshots when a coding agent is not installed
+- [x] Detect pull conflicts and require pull --ignore before overwriting
 - [x] Compress once and split large archives into 5 MiB Git-safe parts
-- [x] Show live activity and Git transfer progress
-- [x] Support collect --force-close to stop selected tools before snapshotting
-- [x] Tolerate temporary files that disappear while active state is compressed
-- [x] Retry transient agent heartbeat and lock-file permission races
-- [x] Omit only unreadable Hermes ticker liveness markers after bounded retries
+- [x] Show live collection, restoration and Git transfer progress
+- [x] Retry transient file races without hiding persistent permission errors

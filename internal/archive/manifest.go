@@ -42,7 +42,6 @@ type Manifest struct {
 	SourceTool  string       `json:"source_tool"` // absolute tool dir at push time
 	CreatedAt   time.Time    `json:"created_at"`
 	Files       []FileEntry  `json:"files"`
-	Omitted     []string     `json:"omitted_volatile_unreadable,omitempty"`
 	BundleParts []BundlePart `json:"bundle_parts,omitempty"`
 }
 

@@ -44,12 +44,12 @@ func cmdCollect(args []string) int {
 		}
 		fmt.Println("Removed legacy git working-repository snapshots.")
 	}
-	removedIDE, err := removeRetiredSnapshots(cfg.RepoPath)
+	removedRetired, err := removeRetiredSnapshots(cfg.RepoPath)
 	if err != nil {
 		return fail(err)
 	}
-	if removedIDE > 0 {
-		fmt.Printf("Removed %d retired IDE snapshot(s) from the sync repo.\n", removedIDE)
+	if removedRetired > 0 {
+		fmt.Printf("Removed %d retired non-coding snapshot(s) from the sync repo.\n", removedRetired)
 	}
 
 	if *forceClose {
@@ -87,11 +87,7 @@ func cmdCollect(args []string) int {
 		if res.Parts > 1 {
 			parts = fmt.Sprintf(", %d compressed parts", res.Parts)
 		}
-		omitted := ""
-		if res.Omitted > 0 {
-			omitted = fmt.Sprintf(", %d unreadable volatile runtime file(s) omitted", res.Omitted)
-		}
-		fmt.Printf("  %-24s done: %d files, %s%s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts, omitted)
+		fmt.Printf("  %-24s done: %d files, %s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts)
 	}
 
 	// Commit the collected snapshot locally.
@@ -122,10 +118,10 @@ func removeRetiredSnapshots(repoPath string) (int, error) {
 			if os.IsNotExist(err) {
 				continue
 			}
-			return removed, fmt.Errorf("inspect retired IDE snapshot %s: %w", name, err)
+			return removed, fmt.Errorf("inspect retired snapshot %s: %w", name, err)
 		}
 		if err := os.RemoveAll(retired); err != nil {
-			return removed, fmt.Errorf("remove retired IDE snapshot %s: %w", name, err)
+			return removed, fmt.Errorf("remove retired snapshot %s: %w", name, err)
 		}
 		removed++
 	}
@@ -232,20 +228,11 @@ func cmdPull(args []string) int {
 			}
 			continue
 		}
-		action := "restored"
-		if res.DeferredPath != "" {
-			action = "staged"
-		}
-		line := fmt.Sprintf("  %-24s done: %d files %s", t.Name, res.Files, action)
+		line := fmt.Sprintf("  %-24s done: %d files restored", t.Name, res.Files)
 		if res.FilesRewrite > 0 || res.DirsRenamed > 0 {
 			line += fmt.Sprintf(", %d rewritten, %d dirs renamed", res.FilesRewrite, res.DirsRenamed)
 		}
 		fmt.Println(line)
-		if res.DeferredPath != "" {
-			fmt.Println("               destination needs permission; local file kept")
-			fmt.Printf("               synced copy: %s\n", res.DeferredPath)
-			fmt.Printf("               destination: %s\n", res.Destination)
-		}
 		if !res.VersionOK {
 			fmt.Printf("           version mismatch: synced %s, local %s — update the tool to match\n",
 				orUnknown(res.SourceVersion), orUnknown(res.LocalVersion))
@@ -263,7 +250,7 @@ func cmdPull(args []string) int {
 		fmt.Println("Review the files above, or run 'contix pull --ignore' to overwrite them.")
 		return 1
 	}
-	fmt.Println("\nDone. Available agent and machine state is ready.")
+	fmt.Println("\nDone. Available coding-agent state is ready.")
 	return 0
 }
 

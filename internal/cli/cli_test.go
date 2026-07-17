@@ -8,7 +8,7 @@ import (
 )
 
 func TestParseToolsSelectsAgentsAndDeduplicates(t *testing.T) {
-	targets, err := parseTools("openclaw,codex,openclaw")
+	targets, err := parseTools("opencode,codex,opencode")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -16,21 +16,21 @@ func TestParseToolsSelectsAgentsAndDeduplicates(t *testing.T) {
 	for _, target := range targets {
 		names = append(names, target.Name)
 	}
-	want := []string{"openclaw", "codex"}
+	want := []string{"opencode", "opencode-config", "codex"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("targets = %v, want %v", names, want)
 	}
 }
 
-func TestParseToolsRejectsRetiredIDE(t *testing.T) {
-	if _, err := parseTools("cursor"); err == nil {
-		t.Fatal("retired IDE target must not be selectable")
+func TestParseToolsRejectsGeneralAgent(t *testing.T) {
+	if _, err := parseTools("hermes"); err == nil {
+		t.Fatal("general agent target must not be selectable")
 	}
 }
 
 func TestRemoveRetiredSnapshotsKeepsAgentState(t *testing.T) {
 	repo := t.TempDir()
-	for _, name := range []string{"cursor", "vscode-home", "codex"} {
+	for _, name := range []string{"cursor", "vscode-home", "hermes", "openclaw", "codex"} {
 		if err := os.MkdirAll(filepath.Join(repo, name), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -39,10 +39,13 @@ func TestRemoveRetiredSnapshotsKeepsAgentState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed != 2 {
-		t.Fatalf("removed = %d, want 2", removed)
+	if removed != 3 {
+		t.Fatalf("removed = %d, want 3", removed)
 	}
 	if _, err := os.Stat(filepath.Join(repo, "codex")); err != nil {
 		t.Fatalf("agent state was removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "cursor")); err != nil {
+		t.Fatalf("coding-agent state was removed: %v", err)
 	}
 }

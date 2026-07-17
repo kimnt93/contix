@@ -1,5 +1,5 @@
-// Command contix syncs coding-agent state and portable machine configuration to
-// a single GitHub repo and restores it on another machine.
+// Command contix syncs AI coding-agent state to a user-owned Git repository and
+// restores it on another machine.
 package main
 
 import (

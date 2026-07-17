@@ -11,8 +11,8 @@ import (
 )
 
 func TestUniqueProcessNames(t *testing.T) {
-	got := unique([]string{"codex", "", "codex", " openclaw ", "bad/name"})
-	want := []string{"codex", "openclaw"}
+	got := unique([]string{"codex", "", "codex", " cursor-agent ", "bad/name"})
+	want := []string{"codex", "cursor-agent"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unique() = %v, want %v", got, want)
 	}

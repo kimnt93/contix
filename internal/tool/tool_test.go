@@ -48,9 +48,9 @@ func TestAgentTargetIncludesAllRegularFilesAndSymlinks(t *testing.T) {
 	}
 }
 
-func TestSSHIncludesKeysKnownHostsAndBackups(t *testing.T) {
+func TestCursorIncludesOnlyPortableAgentFiles(t *testing.T) {
 	root := t.TempDir()
-	files := []string{"config", "id_ed25519", "id_ed25519.pub", "known_hosts", "backup/config"}
+	files := []string{"mcp.json", "cli-config.json", "rules/global.mdc", "extensions/huge.bin", "cache/index.db"}
 	for _, name := range files {
 		path := filepath.Join(root, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -60,38 +60,23 @@ func TestSSHIncludesKeysKnownHostsAndBackups(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	target := sshConfig()
+	target := cursor()
 	target.Home = func() string { return root }
 	got, err := target.IncludedFiles()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"backup/config", "config", "id_ed25519", "id_ed25519.pub", "known_hosts"}
+	want := []string{"cli-config.json", "mcp.json", "rules/global.mdc"}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("included SSH paths = %v, want %v", got, want)
+		t.Fatalf("included Cursor paths = %v, want %v", got, want)
 	}
 }
 
-func TestHostsTargetOnlyIncludesHostsFile(t *testing.T) {
-	root := t.TempDir()
-	for _, name := range []string{"hosts", "passwd"} {
-		if err := os.WriteFile(filepath.Join(root, name), []byte(name), 0o600); err != nil {
-			t.Fatal(err)
-		}
+func TestRegistryContainsOnlyCodingAgents(t *testing.T) {
+	want := []string{
+		"aider", "amp", "antigravity", "auggie", "claude", "cline", "codex", "continue", "copilot",
+		"cursor", "droid", "goose", "goose-config", "kiro", "opencode", "opencode-config", "qwen",
 	}
-	target := hosts()
-	target.Home = func() string { return root }
-	got, err := target.IncludedFiles()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(got, []string{"hosts"}) {
-		t.Fatalf("hosts paths = %v", got)
-	}
-}
-
-func TestRegistryContainsAgentsButNoIDEs(t *testing.T) {
-	want := []string{"antigravity", "claude", "codex", "hermes", "hosts", "kiro", "openclaw", "ssh"}
 	if got := Names(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Names() = %v, want %v", got, want)
 	}

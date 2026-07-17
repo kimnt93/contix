@@ -60,14 +60,6 @@ func ClaudeHome() string {
 	return filepath.Join(Home(), ".claude")
 }
 
-// HermesHome resolves the Hermes Agent state directory, honouring HERMES_HOME.
-func HermesHome() string {
-	if v := os.Getenv("HERMES_HOME"); v != "" {
-		return v
-	}
-	return filepath.Join(Home(), ".hermes")
-}
-
 // KiroHome resolves Kiro's global state directory, honouring the official
 // KIRO_HOME override used by Kiro CLI.
 func KiroHome() string {
@@ -82,26 +74,12 @@ func KiroHome() string {
 // ~/.gemini/antigravity, with global rules at ~/.gemini/GEMINI.md.
 func AntigravityHome() string {
 	if v := os.Getenv("ANTIGRAVITY_HOME"); v != "" {
-		return v
-	}
-	return filepath.Join(Home(), ".gemini")
-}
-
-// OpenClawHome resolves the complete OpenClaw mutable state directory. The
-// explicit state override wins; otherwise OPENCLAW_HOME replaces the OS home
-// used for defaults, and named profiles use ~/.openclaw-<profile>.
-func OpenClawHome() string {
-	if v := os.Getenv("OPENCLAW_STATE_DIR"); v != "" {
 		return expandHomePath(v)
 	}
-	base := Home()
-	if v := os.Getenv("OPENCLAW_HOME"); v != "" {
-		base = expandHomePath(v)
+	if v := os.Getenv("GEMINI_CLI_HOME"); v != "" {
+		return filepath.Join(expandHomePath(v), ".gemini")
 	}
-	if profile := os.Getenv("OPENCLAW_PROFILE"); profile != "" && profile != "default" {
-		return filepath.Join(base, ".openclaw-"+profile)
-	}
-	return filepath.Join(base, ".openclaw")
+	return filepath.Join(Home(), ".gemini")
 }
 
 func expandHomePath(value string) string {
@@ -115,32 +93,119 @@ func expandHomePath(value string) string {
 	return value
 }
 
-// SSHHome resolves the user's SSH configuration directory. CONTIX_SSH_HOME is
-// primarily useful for non-standard setups and isolated testing.
-func SSHHome() string {
-	if v := os.Getenv("CONTIX_SSH_HOME"); v != "" {
-		return v
+func CursorHome() string {
+	if v := os.Getenv("CONTIX_CURSOR_HOME"); v != "" {
+		return expandHomePath(v)
 	}
-	return filepath.Join(Home(), ".ssh")
+	return filepath.Join(Home(), ".cursor")
 }
 
-// HostsDir returns the directory containing the system hosts file.
-func HostsDir() string {
-	if v := os.Getenv("CONTIX_HOSTS_DIR"); v != "" {
-		return v
+func OpenCodeConfigHome() string {
+	if v := os.Getenv("OPENCODE_CONFIG_DIR"); v != "" {
+		return expandHomePath(v)
+	}
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		base = filepath.Join(Home(), ".config")
+	}
+	return filepath.Join(base, "opencode")
+}
+
+func OpenCodeDataHome() string {
+	if v := os.Getenv("CONTIX_OPENCODE_DATA_HOME"); v != "" {
+		return expandHomePath(v)
+	}
+	base := os.Getenv("XDG_DATA_HOME")
+	if base == "" {
+		base = filepath.Join(Home(), ".local", "share")
+	}
+	return filepath.Join(base, "opencode")
+}
+
+func CopilotHome() string {
+	if v := os.Getenv("COPILOT_HOME"); v != "" {
+		return expandHomePath(v)
+	}
+	return filepath.Join(Home(), ".copilot")
+}
+
+func ClineHome() string {
+	if v := os.Getenv("CONTIX_CLINE_HOME"); v != "" {
+		return expandHomePath(v)
+	}
+	return filepath.Join(Home(), ".cline")
+}
+
+func ContinueHome() string {
+	if v := os.Getenv("CONTIX_CONTINUE_HOME"); v != "" {
+		return expandHomePath(v)
+	}
+	return filepath.Join(Home(), ".continue")
+}
+
+func QwenHome() string {
+	if v := os.Getenv("CONTIX_QWEN_HOME"); v != "" {
+		return expandHomePath(v)
+	}
+	return filepath.Join(Home(), ".qwen")
+}
+
+func DroidHome() string {
+	if v := os.Getenv("CONTIX_DROID_HOME"); v != "" {
+		return expandHomePath(v)
+	}
+	return filepath.Join(Home(), ".factory")
+}
+
+func AmpHome() string {
+	if v := os.Getenv("CONTIX_AMP_HOME"); v != "" {
+		return expandHomePath(v)
+	}
+	return filepath.Join(Home(), ".config", "amp")
+}
+
+func AuggieHome() string {
+	if v := os.Getenv("CONTIX_AUGGIE_HOME"); v != "" {
+		return expandHomePath(v)
+	}
+	return filepath.Join(Home(), ".augment")
+}
+
+func GooseDataHome() string {
+	if v := os.Getenv("GOOSE_PATH_ROOT"); v != "" {
+		return expandHomePath(v)
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(Home(), "Library", "Application Support", "Block", "goose")
+	case "windows":
+		base := os.Getenv("APPDATA")
+		if base == "" {
+			base = os.Getenv("AppData")
+		}
+		if base == "" {
+			base = filepath.Join(Home(), "AppData", "Roaming")
+		}
+		return filepath.Join(base, "Block", "goose")
+	default:
+		base := os.Getenv("XDG_DATA_HOME")
+		if base == "" {
+			base = filepath.Join(Home(), ".local", "share")
+		}
+		return filepath.Join(base, "goose")
+	}
+}
+
+func GooseConfigHome() string {
+	if v := os.Getenv("GOOSE_PATH_ROOT"); v != "" {
+		return filepath.Join(expandHomePath(v), "config")
 	}
 	if runtime.GOOS == "windows" {
-		root := os.Getenv("SystemRoot")
-		if root == "" {
-			root = `C:\Windows`
-		}
-		return filepath.Join(root, "System32", "drivers", "etc")
+		return filepath.Join(GooseDataHome(), "config")
 	}
-	return "/etc"
-}
-
-// HostsStagingDir is a user-writable holding area used when the system hosts
-// file cannot be replaced without administrator privileges.
-func HostsStagingDir() string {
-	return filepath.Join(ConfigDir(), "pending", "hosts")
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		base = filepath.Join(Home(), ".config")
+	}
+	return filepath.Join(base, "goose")
 }
