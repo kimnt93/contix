@@ -37,7 +37,8 @@ type PullResult struct {
 	DirsRenamed   int
 	FilesRewrite  int
 	Skipped       string
-	DeferredPath  string // user-writable copy when the destination needs elevation
+	Conflicts     []string // local paths that differ and were not overwritten
+	DeferredPath  string   // user-writable copy when the destination needs elevation
 	Destination   string
 }
 
@@ -99,7 +100,7 @@ func keepPreviousSnapshot(bundlePath string, res *PushResult) {
 }
 
 // Pull restores a tool's state from the repo onto this machine.
-func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrite bool) (PullResult, error) {
+func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrite, ignoreConflicts bool) (PullResult, error) {
 	res := PullResult{Tool: t.Name}
 	manifestPath := filepath.Join(toolDir(cfg, t.Name), archive.ManifestName)
 	bundlePath := filepath.Join(toolDir(cfg, t.Name), archive.BundleName)
@@ -120,6 +121,16 @@ func Pull(cfg config.Config, t tool.Tool, userMaps []pathrewrite.Mapping, rewrit
 		if !writableFile(res.Destination) {
 			restoreRoot = t.RestoreFallback()
 			res.DeferredPath = filepath.Join(restoreRoot, filepath.FromSlash(t.WriteProbe))
+		}
+	}
+	if !ignoreConflicts && res.DeferredPath == "" {
+		conflicts, err := archive.Conflicts(home, m)
+		if err != nil {
+			return res, err
+		}
+		if len(conflicts) > 0 {
+			res.Conflicts = conflicts
+			return res, nil
 		}
 	}
 	if err := os.MkdirAll(restoreRoot, 0o755); err != nil {

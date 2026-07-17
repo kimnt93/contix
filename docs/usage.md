@@ -8,7 +8,7 @@ This document is the full reference for `contix`. For a quick overview see the
 1. [Concepts](#concepts)
 2. [Command reference](#command-reference)
 3. [Configuration](#configuration)
-4. [What gets synced (and skipped)](#what-gets-synced-and-skipped)
+4. [What gets synced](#what-gets-synced)
 5. [Cross-machine path rewriting](#cross-machine-path-rewriting)
 6. [Layout of the sync repo](#layout-of-the-sync-repo)
 7. [Typical workflows](#typical-workflows)
@@ -21,9 +21,11 @@ This document is the full reference for `contix`. For a quick overview see the
 - **Sync repo** — a single git repository you own (usually private on GitHub)
   that stores the *latest* snapshot of everything. `contix` keeps a local clone
   and pushes/pulls it.
-- **Targets** — `antigravity`, `claude`, `codex`, `hermes`, `hosts`, `kiro` and
-  `ssh`.
-  Each has a curated include/exclude list so only meaningful state is synced.
+- **Targets** — agent state, VS Code-family editor data/extensions, SSH and
+  hosts. Product groups include `antigravity`, `cursor`, `kiro`, `vscode`,
+  `vscodium`, `void` and `windsurf`.
+  Agent and SSH roots are complete snapshots; hosts selects only the hosts file
+  rather than the entire system configuration directory.
 - **Snapshot** — one `contix collect`: it rebuilds the bundles, commits them to the
   sync repo, and optionally pushes to the remote.
 
@@ -75,11 +77,18 @@ while it works.
 
 ### `contix pull`
 
+```
+--ignore           Ignore conflicts and overwrite with the synced snapshot
+```
+
 Steps: `git pull` the sync repo, extract each tool bundle into its home dir,
 verify every file against its recorded SHA-256, then rewrite embedded paths for
 this machine. Pull restores every available target and verifies its checksums.
 Git transfer progress and per-tool restore activity remain visible throughout.
 If no remote bundle exists for a target, its local files are left unchanged.
+When an archived path already exists with different content or a different file
+type, normal pull reports the paths and leaves that entire target untouched.
+`--ignore` explicitly permits those conflicts to be overwritten.
 
 ---
 
@@ -113,19 +122,27 @@ Environment overrides for tool locations:
 - `ANTIGRAVITY_HOME` — Antigravity/Gemini state root (default `~/.gemini`)
 - `CONTIX_SSH_HOME` — SSH config dir (default `~/.ssh`)
 - `CONTIX_HOSTS_DIR` — system hosts directory (default `/etc` on Unix)
+- `CONTIX_CURSOR_DATA_HOME`, `CONTIX_CURSOR_HOME`
+- `CONTIX_WINDSURF_DATA_HOME`, `CONTIX_WINDSURF_AGENT_HOME`, `CONTIX_WINDSURF_HOME`
+- `CONTIX_VSCODE_DATA_HOME`, `CONTIX_VSCODE_HOME`
+- `CONTIX_VSCODIUM_DATA_HOME`, `CONTIX_VSCODIUM_HOME`
+- `CONTIX_VOID_DATA_HOME`, `CONTIX_VOID_HOME`
+- `CONTIX_KIRO_IDE_HOME`
+- `CONTIX_ANTIGRAVITY_IDE_HOME`, `CONTIX_ANTIGRAVITY_EXTENSIONS_HOME`
+
+Editor `*_DATA_HOME` defaults are platform aware: `~/.config/<Product>` on
+Linux, `~/Library/Application Support/<Product>` on macOS and
+`%APPDATA%\<Product>` on Windows.
 
 ---
 
-## What gets synced (and skipped)
+## What gets synced
 
-Most agent targets sync everything under their state directory except unsafe or
-reproducible data. Sensitive machine roots use strict allowlists. Matching rules
-for exclude patterns are relative to each target's root:
-
-- `dir/` — the directory and everything under it
-- `*.ext` — glob on the file's basename
-- `name` — any path segment equal to `name`
-- `a/b/c` — an exact path or a prefix directory
+Agent and SSH targets sync every regular file and symlink below their configured
+root. There are no credential, key, cache, log, runtime or nested-repository
+exclusions. The hosts target is intentionally scoped to the single system hosts
+file instead of the entire system configuration directory. Sockets, devices and
+other non-portable special files cause collection to fail explicitly.
 
 Archives use gzip's maximum compression level. A compressed bundle larger than
 5 MiB is stored as ordered `bundle.tar.gz.part-NNN` files. `pull` reads those
@@ -134,54 +151,55 @@ bundles remain compatible.
 
 ### Codex (`~/.codex`)
 
-Everything is synced **except**:
-
-- `auth.json`, `.credentials.json` — machine-locked credentials (never synced)
-- `logs_*.sqlite` — large (300MB+) telemetry log that regenerates on its own
-- `*.sqlite-shm` — SQLite shared-memory sidecar, rebuilt on open
-- `tmp/`, `.tmp/`, `*.lock` — volatile runtime scratch files
-- `.git` — nested git repos, which would corrupt the sync repo if embedded
+Everything is synced, including credentials, databases and sidecars, telemetry,
+temporary files, locks, caches, plugins and nested repositories.
 
 ### Claude Code (`~/.claude`)
 
-Everything is synced **except**:
-
-- `.credentials.json` — machine-locked credentials (never synced)
-- `*.sqlite-shm` — SQLite shared-memory sidecar, rebuilt on open
-- `tmp/`, `*.lock` — volatile runtime scratch files
-- `.git` — nested git repos (e.g. plugin marketplaces), which would corrupt the
-  sync repo if embedded
+Everything is synced, including credentials, database sidecars, temporary files,
+locks, downloads, plugin marketplaces and their nested repositories.
 
 ### Hermes Agent (`~/.hermes`)
 
-Portable config and working context are synced: `config.yaml`, `SOUL.md`,
-memories, skills, sessions, cron definitions and the state database. The
-following are excluded:
-
-- `auth.json`, `auth.lock`, `.env`, `.credentials.json`, `pairing/`
-- `hermes-agent/`, `bin/`, caches, logs, sandbox/runtime data and
-  `cron/ticker_heartbeat`
-- lock files and SQLite sidecars
+Everything is synced: configuration, credentials, pairing state, memories,
+skills, sessions, cron data, databases and sidecars, installed source/venv,
+binaries, caches, logs and sandbox/runtime data.
 
 ### Kiro (`~/.kiro`)
 
-Global agents, prompts, steering, settings, skills and CLI sessions are synced.
-Credential files, `.env`, runtime locks, temporary data, logs, caches and nested
-git repositories are excluded. Kiro's official `KIRO_HOME` override is honored.
+Everything under the state root is synced, including agents, prompts, steering,
+settings, skills, CLI sessions, credentials, locks, logs, caches and nested
+repositories. Kiro's official `KIRO_HOME` override is honored.
 
 ### Google Antigravity (`~/.gemini`)
 
-The allowlist contains `GEMINI.md` and `antigravity/`, covering global rules,
-artifacts, knowledge, conversations and MCP configuration. Authentication files,
-the machine-specific `installation_id`, locks, temporary data, logs and caches
-are excluded. Large IDE caches and installed extensions outside this state root
-are intentionally not copied.
+Everything below the configured Gemini/Antigravity state root is synced,
+including global rules, authentication, installation IDs, artifacts, knowledge,
+conversations, MCP configuration, locks, temporary data, logs and caches.
+
+### VS Code-family editors
+
+The following product groups expand into every listed root:
+
+| Group | Application data | Additional state |
+|---|---|---|
+| `cursor` | Cursor | `~/.cursor` |
+| `windsurf` | Windsurf | `~/.codeium/windsurf`, `~/.windsurf` |
+| `vscode` | Code | `~/.vscode` |
+| `vscodium` | VSCodium | `~/.vscode-oss` |
+| `void` | Void | `~/.void` |
+| `kiro` | Kiro | `~/.kiro` |
+| `antigravity` | Antigravity | `~/.gemini`, `~/.antigravity` |
+
+Application-data roots contain settings, histories, workspace/global storage,
+authentication, caches and extension state. Home roots contain agent config,
+rules, MCP settings, installed extensions and related runtime data. As with all
+targets, every regular file and symlink is included.
 
 ### SSH configuration (`~/.ssh`)
 
-Only the root `config` file and the `config.d/` or `conf.d/` fragment directories
-are allowed. Keys, `known_hosts`, and similarly named files inside backup
-directories cannot enter the archive.
+Everything below the SSH root is synced, including configuration fragments,
+private/public keys, `known_hosts`, authorized keys and backups.
 
 ### System hosts file
 
@@ -221,6 +239,8 @@ Path rewriting is automatic during `contix pull`.
 │   ├── bundle.tar.gz.part-000 # large bundles are split into 5 MiB parts
 │   ├── bundle.tar.gz.part-001
 │   └── manifest.json
+├── cursor/                   # OS-specific Cursor application data
+├── cursor-home/              # ~/.cursor
 ├── hermes/                   # same bundle + manifest layout
 ├── hosts/
 ├── kiro/
@@ -271,6 +291,12 @@ Multiple targets can be selected together:
 contix collect --tools kiro,antigravity,ssh,hosts
 ```
 
+Editor product names collect all associated roots:
+
+```bash
+contix collect --tools cursor,windsurf
+```
+
 ---
 
 ## Troubleshooting
@@ -292,3 +318,11 @@ if you hit format issues.
 **Hosts was staged instead of restored** — the system hosts file needs elevated
 permissions. Contix prints the staged and destination paths and deliberately
 keeps the local file untouched for review.
+
+**Pull reports conflicts** — the local and synced versions differ. The listed
+target is not modified. Review the paths, or use `contix pull --ignore` to
+explicitly overwrite them with the synced snapshot.
+
+**Collection fails on a runtime/permission file** — all-files mode refuses to
+silently omit it. Stop the related application or correct the file permissions,
+then run `contix collect` again.

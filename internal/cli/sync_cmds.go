@@ -45,21 +45,21 @@ func cmdCollect(args []string) int {
 
 	fmt.Println("Collecting state:")
 	for _, t := range tls {
-		stop := startActivity(fmt.Sprintf("  %-12s compressing", t.Name))
+		stop := startActivity(fmt.Sprintf("  %-24s compressing", t.Name))
 		res, err := syncer.Push(cfg, t)
 		stop()
 		if err != nil {
 			return fail(fmt.Errorf("collect %s: %w", t.Name, err))
 		}
 		if res.Skipped != "" {
-			fmt.Printf("  %-12s skipped (%s)\n", t.Name, res.Skipped)
+			fmt.Printf("  %-24s skipped (%s)\n", t.Name, res.Skipped)
 			continue
 		}
 		parts := ""
 		if res.Parts > 1 {
 			parts = fmt.Sprintf(", %d compressed parts", res.Parts)
 		}
-		fmt.Printf("  %-12s done: %d files, %s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts)
+		fmt.Printf("  %-24s done: %d files, %s%s%s\n", t.Name, res.Files, humanBytes(res.Bytes), versionSuffix(res.Version), parts)
 	}
 
 	// Commit the collected snapshot locally.
@@ -129,6 +129,7 @@ func cmdPush(args []string) int {
 
 func cmdPull(args []string) int {
 	fs := flag.NewFlagSet("pull", flag.ContinueOnError)
+	ignore := fs.Bool("ignore", false, "ignore local conflicts and overwrite with synced state")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -161,22 +162,31 @@ func cmdPull(args []string) int {
 	}
 
 	fmt.Println("\nRestoring state:")
+	hadConflicts := false
 	for _, t := range tls {
-		stop := startActivity(fmt.Sprintf("  %-12s restoring and verifying", t.Name))
-		res, err := syncer.Pull(cfg, t, nil, true)
+		stop := startActivity(fmt.Sprintf("  %-24s restoring and verifying", t.Name))
+		res, err := syncer.Pull(cfg, t, nil, true, *ignore)
 		stop()
 		if err != nil {
 			return fail(fmt.Errorf("pull %s: %w", t.Name, err))
 		}
 		if res.Skipped != "" {
-			fmt.Printf("  %-12s skipped (%s)\n", t.Name, res.Skipped)
+			fmt.Printf("  %-24s skipped (%s)\n", t.Name, res.Skipped)
+			continue
+		}
+		if len(res.Conflicts) > 0 {
+			hadConflicts = true
+			fmt.Printf("  %-24s conflict: %d local file(s) differ; target kept\n", t.Name, len(res.Conflicts))
+			for _, path := range res.Conflicts {
+				fmt.Printf("               - %s\n", path)
+			}
 			continue
 		}
 		action := "restored"
 		if res.DeferredPath != "" {
 			action = "staged"
 		}
-		line := fmt.Sprintf("  %-12s done: %d files %s", t.Name, res.Files, action)
+		line := fmt.Sprintf("  %-24s done: %d files %s", t.Name, res.Files, action)
 		if res.FilesRewrite > 0 || res.DirsRenamed > 0 {
 			line += fmt.Sprintf(", %d rewritten, %d dirs renamed", res.FilesRewrite, res.DirsRenamed)
 		}
@@ -198,6 +208,11 @@ func cmdPull(args []string) int {
 		}
 	}
 
+	if hadConflicts {
+		fmt.Println("\nConflicting targets were not overwritten.")
+		fmt.Println("Review the files above, or run 'contix pull --ignore' to overwrite them.")
+		return 1
+	}
 	fmt.Println("\nDone. Available agent and machine state is ready.")
 	return 0
 }

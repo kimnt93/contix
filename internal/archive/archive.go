@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -43,14 +42,32 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 
 	for _, rel := range rels {
 		abs := filepath.Join(srcRoot, filepath.FromSlash(rel))
+		info, err := os.Lstat(abs)
+		if err != nil {
+			return m, fmt.Errorf("inspect %s: %w", rel, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(abs)
+			if err != nil {
+				return m, fmt.Errorf("read symlink %s: %w", rel, err)
+			}
+			if err := writeSymlink(tw, rel, target, info); err != nil {
+				return m, fmt.Errorf("archive symlink %s: %w", rel, err)
+			}
+			m.Files = append(m.Files, FileEntry{
+				Path:       rel,
+				Mode:       uint32(info.Mode().Perm()),
+				SHA256:     textSHA256(target),
+				Type:       "symlink",
+				LinkTarget: target,
+			})
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			return m, fmt.Errorf("unsupported non-regular state path: %s", rel)
+		}
 		entry, staged, err := stageFile(abs)
 		if err != nil {
-			if skippableSourceError(err) {
-				// Tool runtimes and git worktrees can delete/truncate temporary or
-				// untracked files after discovery. They are not a reason to fail the
-				// whole snapshot.
-				continue
-			}
 			return m, fmt.Errorf("stage %s: %w", rel, err)
 		}
 		if staged == nil {
@@ -86,6 +103,21 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 		return m, err
 	}
 	return m, nil
+}
+
+func writeSymlink(tw *tar.Writer, rel, target string, info os.FileInfo) error {
+	return tw.WriteHeader(&tar.Header{
+		Name:     rel,
+		Mode:     int64(info.Mode().Perm()),
+		ModTime:  info.ModTime(),
+		Typeflag: tar.TypeSymlink,
+		Linkname: target,
+	})
+}
+
+func textSHA256(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }
 
 // bundlePartSize is a variable so tests can exercise chunking without creating
@@ -181,10 +213,6 @@ func removeBundleOutputs(bundlePath string) error {
 	return nil
 }
 
-func skippableSourceError(err error) bool {
-	return os.IsNotExist(err) || os.IsPermission(err) || errors.Is(err, io.EOF)
-}
-
 // stageFile takes a bounded point-in-time copy before writing a tar header. If
 // the source disappears or shrinks while active, no partial entry is emitted.
 func stageFile(abs string) (os.FileInfo, *os.File, error) {
@@ -276,8 +304,29 @@ func Extract(bundlePath, destRoot string) ([]string, error) {
 			}
 			continue
 		}
+		if err := ensureNoSymlinkParent(cleanDest, target); err != nil {
+			return extracted, err
+		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return extracted, err
+		}
+		if hdr.Typeflag == tar.TypeSymlink {
+			if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+				return extracted, err
+			}
+			if err := os.Symlink(hdr.Linkname, target); err != nil {
+				return extracted, err
+			}
+			extracted = append(extracted, filepath.ToSlash(hdr.Name))
+			continue
+		}
+		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
+			return extracted, fmt.Errorf("unsupported archive entry type for %s", hdr.Name)
+		}
+		if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			if err := os.Remove(target); err != nil {
+				return extracted, err
+			}
 		}
 		out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(hdr.Mode)&0o777)
 		if err != nil {
@@ -287,10 +336,41 @@ func Extract(bundlePath, destRoot string) ([]string, error) {
 			out.Close()
 			return extracted, err
 		}
-		out.Close()
+		if err := out.Chmod(os.FileMode(hdr.Mode) & 0o777); err != nil {
+			out.Close()
+			return extracted, err
+		}
+		if err := out.Close(); err != nil {
+			return extracted, err
+		}
 		extracted = append(extracted, filepath.ToSlash(hdr.Name))
 	}
 	return extracted, nil
+}
+
+func ensureNoSymlinkParent(root, target string) error {
+	rel, err := filepath.Rel(root, filepath.Dir(target))
+	if err != nil {
+		return err
+	}
+	current := root
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		if part == "." || part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to restore through symlink parent: %s", current)
+		}
+	}
+	return nil
 }
 
 // Exists reports whether a single-file or chunked bundle exists.
@@ -353,7 +433,26 @@ func openBundle(bundlePath string) (io.ReadCloser, error) {
 func Verify(root string, m Manifest) ([]string, error) {
 	var problems []string
 	for _, fe := range m.Files {
-		abs := filepath.Join(root, filepath.FromSlash(fe.Path))
+		abs, err := safeTarget(root, fe.Path)
+		if err != nil {
+			return nil, err
+		}
+		if fe.Type == "symlink" {
+			info, err := os.Lstat(abs)
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("%s: %v", fe.Path, err))
+				continue
+			}
+			if info.Mode()&os.ModeSymlink == 0 {
+				problems = append(problems, fmt.Sprintf("%s: expected symlink", fe.Path))
+				continue
+			}
+			target, err := os.Readlink(abs)
+			if err != nil || target != fe.LinkTarget || textSHA256(target) != fe.SHA256 {
+				problems = append(problems, fmt.Sprintf("%s: symlink target mismatch", fe.Path))
+			}
+			continue
+		}
 		sum, err := fileSHA256(abs)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s: %v", fe.Path, err))
@@ -364,6 +463,60 @@ func Verify(root string, m Manifest) ([]string, error) {
 		}
 	}
 	return problems, nil
+}
+
+// Conflicts returns manifest paths that already exist locally with different
+// content or a different file type. Missing local paths are not conflicts.
+func Conflicts(root string, m Manifest) ([]string, error) {
+	var conflicts []string
+	for _, fe := range m.Files {
+		abs, err := safeTarget(root, fe.Path)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Lstat(abs)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("compare %s: %w", fe.Path, err)
+		}
+		if fe.Type == "symlink" {
+			if info.Mode()&os.ModeSymlink == 0 {
+				conflicts = append(conflicts, fe.Path)
+				continue
+			}
+			target, err := os.Readlink(abs)
+			if err != nil {
+				return nil, fmt.Errorf("compare symlink %s: %w", fe.Path, err)
+			}
+			if target != fe.LinkTarget {
+				conflicts = append(conflicts, fe.Path)
+			}
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			conflicts = append(conflicts, fe.Path)
+			continue
+		}
+		sum, err := fileSHA256(abs)
+		if err != nil {
+			return nil, fmt.Errorf("compare %s: %w", fe.Path, err)
+		}
+		if sum != fe.SHA256 {
+			conflicts = append(conflicts, fe.Path)
+		}
+	}
+	return conflicts, nil
+}
+
+func safeTarget(root, rel string) (string, error) {
+	cleanRoot := filepath.Clean(root)
+	target := filepath.Join(cleanRoot, filepath.FromSlash(rel))
+	if target != cleanRoot && !strings.HasPrefix(target, cleanRoot+string(os.PathSeparator)) {
+		return "", fmt.Errorf("refusing unsafe manifest path: %s", rel)
+	}
+	return target, nil
 }
 
 func fileSHA256(abs string) (string, error) {

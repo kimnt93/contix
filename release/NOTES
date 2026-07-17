@@ -1,9 +1,14 @@
-- [x] Sync Codex, Claude Code and Hermes state
-- [x] Sync Kiro settings, agents, prompts, steering and sessions
-- [x] Sync Google Antigravity rules, conversations, knowledge and artifacts
-- [x] Sync SSH configuration while excluding private keys
+- [x] Sync every regular file and symlink under each configured target root
+- [x] Sync Codex, Claude Code, Hermes, Kiro and Google Antigravity state
+- [x] Sync Cursor application data plus its complete ~/.cursor home
+- [x] Sync Windsurf, VS Code, VSCodium and Void state and extensions
+- [x] Sync Kiro and Antigravity IDE application data and extensions
+- [x] Expand editor product names to every associated state root automatically
+- [x] Sync complete SSH state including keys, known hosts and backups
 - [x] Sync the system hosts file with permission-safe staging
 - [x] Preserve previous snapshots when a target is missing
 - [x] Preserve local state when no remote bundle exists
+- [x] Detect pull conflicts before overwriting local target state
+- [x] Support contix pull --ignore for explicit conflict overwrite
 - [x] Compress once and split large archives into 5 MiB Git-safe parts
 - [x] Show live activity and Git transfer progress

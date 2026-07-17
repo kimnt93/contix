@@ -2,7 +2,6 @@ package archive
 
 import (
 	"crypto/rand"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -89,13 +88,6 @@ func TestCreateSplitsAndExtractsLargeCompressedBundle(t *testing.T) {
 	}
 }
 
-func TestSkippableSourceErrorIncludesPermissionDenied(t *testing.T) {
-	err := &os.PathError{Op: "open", Path: "runtime-file", Err: fs.ErrPermission}
-	if !skippableSourceError(err) {
-		t.Fatal("permission-denied runtime files must be skipped")
-	}
-}
-
 func TestExtractRejectsZipSlip(t *testing.T) {
 	// Build a bundle whose entry escapes the destination.
 	src := t.TempDir()
@@ -111,16 +103,51 @@ func TestExtractRejectsZipSlip(t *testing.T) {
 	}
 }
 
-func TestCreateSkipsFileThatDisappearedAfterDiscovery(t *testing.T) {
+func TestCreateFailsWhenFileDisappearsAfterDiscovery(t *testing.T) {
 	src := t.TempDir()
 	writeFileT(t, filepath.Join(src, "stable.txt"), "kept")
 	bundle := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	m, err := Create(src, []string{"stable.txt", "gone.lock"}, bundle, NewManifest("test", "", src))
+	if _, err := Create(src, []string{"stable.txt", "gone.lock"}, bundle, NewManifest("test", "", src)); err == nil {
+		t.Fatal("missing discovered file must fail an all-files snapshot")
+	}
+}
+
+func TestSymlinkRoundTripAndConflictDetection(t *testing.T) {
+	src := t.TempDir()
+	writeFileT(t, filepath.Join(src, "target.txt"), "target")
+	if err := os.Symlink("target.txt", filepath.Join(src, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(t.TempDir(), BundleName)
+	m, err := Create(src, []string{"link.txt", "target.txt"}, bundle, NewManifest("test", "", src))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Files) != 1 || m.Files[0].Path != "stable.txt" {
-		t.Fatalf("unexpected manifest: %#v", m.Files)
+	dest := t.TempDir()
+	if _, err := Extract(bundle, dest); err != nil {
+		t.Fatal(err)
+	}
+	target, err := os.Readlink(filepath.Join(dest, "link.txt"))
+	if err != nil || target != "target.txt" {
+		t.Fatalf("restored symlink target = %q, %v", target, err)
+	}
+	conflicts, err := Conflicts(dest, m)
+	if err != nil || len(conflicts) != 0 {
+		t.Fatalf("unexpected conflicts: %v, %v", conflicts, err)
+	}
+	if err := os.Remove(filepath.Join(dest, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("other.txt", filepath.Join(dest, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	writeFileT(t, filepath.Join(dest, "target.txt"), "local")
+	conflicts, err = Conflicts(dest, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conflicts) != 2 {
+		t.Fatalf("conflicts = %v, want link.txt and target.txt", conflicts)
 	}
 }
 

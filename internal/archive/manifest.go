@@ -12,14 +12,16 @@ import (
 )
 
 // SchemaVersion is bumped when the manifest format changes incompatibly.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // FileEntry records one archived file for fidelity verification.
 type FileEntry struct {
-	Path   string `json:"path"`   // forward-slash path relative to tool home
-	Size   int64  `json:"size"`   // bytes
-	Mode   uint32 `json:"mode"`   // unix file mode bits
-	SHA256 string `json:"sha256"` // hex digest of the file contents
+	Path       string `json:"path"`                  // forward-slash path relative to tool home
+	Size       int64  `json:"size"`                  // bytes; zero for symlinks
+	Mode       uint32 `json:"mode"`                  // unix file mode bits
+	SHA256     string `json:"sha256"`                // digest of file bytes or symlink target
+	Type       string `json:"type,omitempty"`        // empty regular file | symlink
+	LinkTarget string `json:"link_target,omitempty"` // target when Type is symlink
 }
 
 // BundlePart records one compressed archive chunk. Large bundles are split so

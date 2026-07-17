@@ -115,3 +115,58 @@ func HostsDir() string {
 func HostsStagingDir() string {
 	return filepath.Join(ConfigDir(), "pending", "hosts")
 }
+
+// editorDataDir resolves the Electron/VS Code-style application data directory
+// used for settings, workspace state, histories, caches and authentication.
+func editorDataDir(envName, product string) string {
+	if v := os.Getenv(envName); v != "" {
+		return v
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(Home(), "Library", "Application Support", product)
+	case "windows":
+		base := os.Getenv("APPDATA")
+		if base == "" {
+			base = os.Getenv("AppData")
+		}
+		if base == "" {
+			base = filepath.Join(Home(), "AppData", "Roaming")
+		}
+		return filepath.Join(base, product)
+	default:
+		base := os.Getenv("XDG_CONFIG_HOME")
+		if base == "" {
+			base = filepath.Join(Home(), ".config")
+		}
+		return filepath.Join(base, product)
+	}
+}
+
+func editorHome(envName, dir string) string {
+	if v := os.Getenv(envName); v != "" {
+		return v
+	}
+	return filepath.Join(Home(), dir)
+}
+
+func CursorDataHome() string   { return editorDataDir("CONTIX_CURSOR_DATA_HOME", "Cursor") }
+func CursorHome() string       { return editorHome("CONTIX_CURSOR_HOME", ".cursor") }
+func WindsurfDataHome() string { return editorDataDir("CONTIX_WINDSURF_DATA_HOME", "Windsurf") }
+func WindsurfHome() string     { return editorHome("CONTIX_WINDSURF_HOME", ".windsurf") }
+func WindsurfAgentHome() string {
+	return editorHome("CONTIX_WINDSURF_AGENT_HOME", filepath.Join(".codeium", "windsurf"))
+}
+func VSCodeDataHome() string   { return editorDataDir("CONTIX_VSCODE_DATA_HOME", "Code") }
+func VSCodeHome() string       { return editorHome("CONTIX_VSCODE_HOME", ".vscode") }
+func VSCodiumDataHome() string { return editorDataDir("CONTIX_VSCODIUM_DATA_HOME", "VSCodium") }
+func VSCodiumHome() string     { return editorHome("CONTIX_VSCODIUM_HOME", ".vscode-oss") }
+func VoidDataHome() string     { return editorDataDir("CONTIX_VOID_DATA_HOME", "Void") }
+func VoidHome() string         { return editorHome("CONTIX_VOID_HOME", ".void") }
+func KiroIDEHome() string      { return editorDataDir("CONTIX_KIRO_IDE_HOME", "Kiro") }
+func AntigravityIDEHome() string {
+	return editorDataDir("CONTIX_ANTIGRAVITY_IDE_HOME", "Antigravity")
+}
+func AntigravityExtensionsHome() string {
+	return editorHome("CONTIX_ANTIGRAVITY_EXTENSIONS_HOME", ".antigravity")
+}

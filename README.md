@@ -5,9 +5,10 @@
 `contix` snapshots the state of [Codex](https://github.com/openai/codex),
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Hermes Agent,
 [Kiro](https://kiro.dev/) and [Google Antigravity](https://antigravity.google/),
-plus SSH configuration and the system hosts file. It compresses everything into
-a single git repo you own. On a new machine, one pull restores the available
-state so you can pick up where you left off.
+along with Cursor, Windsurf, VS Code, VSCodium, Void, SSH state and the system
+hosts file. It compresses everything into a single git repo you own. On a new
+machine, one pull restores the available state so you can pick up where you
+left off.
 
 It is a single, dependency-free binary written in Go (1.26). It shells out to
 your existing `git`, so it reuses your SSH keys, credentials and identity.
@@ -32,11 +33,10 @@ Moving to a new laptop means losing your agents' accumulated memory and your
 carefully tuned settings. Existing dotfile/sync tools compress and upload files,
 but none understand multiple AI coding agents. `contix` does:
 
-- **Seven built-in targets** — Codex, Claude Code, Hermes, Kiro, Antigravity,
-  SSH config and hosts are collected together. It syncs portable state
-  (memory, rules, skills, sessions, settings and more), skipping only what's
-  unsafe or pointless: machine-locked credentials, huge regenerating telemetry
-  logs, and nested `.git` repos.
+- **Agent and editor coverage** — Codex, Claude Code, Hermes, Kiro, Antigravity,
+  Cursor, Windsurf, VS Code, VSCodium, Void, SSH state and hosts are collected
+  together. Every regular file and symlink below each configured root is
+  included, without credential/cache/runtime exclusion lists.
 - **One repo, latest wins** — everything lands in a single git repo that always
   holds the latest snapshot. No servers, no accounts, no lock-in.
 - **GitHub-size safe** — archives use maximum gzip compression and are split
@@ -60,7 +60,7 @@ make upgrade      # later: fast-forward this checkout and reinstall latest
 Both commands print the installed version and its feature checklist. Release
 metadata is kept in two easy-to-edit files:
 
-- [`release/VERSION`](release/VERSION) — one version string, such as `0.5.0`
+- [`release/VERSION`](release/VERSION) — one version string, such as `0.7.0`
 - [`release/NOTES`](release/NOTES) — one `- [x]` line per shipped feature
 
 The files are embedded into the binary during the build, so they are not needed
@@ -131,44 +131,59 @@ Optional collection filter:
 
 - `contix collect --tools codex,kiro,ssh` — collect selected targets only.
 
+Editor names are groups. For example, `contix collect --tools cursor` collects
+both Cursor's OS-specific application data and its complete `~/.cursor` home.
+The same expansion applies to `windsurf`, `vscode`, `vscodium`, `void`, `kiro`
+and `antigravity`.
+
+`contix pull` protects differing local files by reporting conflicts and leaving
+that target unchanged. Use `contix pull --ignore` when you intentionally want
+the synced snapshot to overwrite those conflicts.
+
 See [docs/usage.md](docs/usage.md) for the full reference and internals.
 
 ---
 
 ## What gets synced
 
-`contix` syncs each tool's portable state, skipping only what's unsafe,
-volatile, or reproducible.
+`contix` syncs every regular file and symlink under each configured target root.
+Credentials, keys, logs, caches, locks, runtime files and nested `.git`
+directories are included. Non-portable special files such as sockets and device
+nodes cause collection to fail rather than being silently skipped.
 
-**Codex** (`~/.codex`, or `$CODEX_HOME`): everything — `config.toml`, provider
-configs, `AGENTS.md`, history, rules, skills, memories, sessions, SQLite
-memory/state stores, caches, plugins, and more.
-**Skipped:** `auth.json`/`.credentials.json` (credentials), `logs_*.sqlite`
-(large regenerating telemetry), `*.sqlite-shm` sidecars, and nested `.git` dirs.
+**Codex** (`~/.codex`, or `$CODEX_HOME`): everything, including configuration,
+credentials, histories, rules, skills, memories, sessions, databases, logs,
+caches, plugins, temporary state and nested repositories.
 
-**Claude Code** (`~/.claude`, or `$CLAUDE_CONFIG_DIR`): everything — `CLAUDE.md`,
-`settings.json`, project registry, `history.jsonl`, per-project transcripts,
-skills, rules, plugins, downloads, backups, and more.
-**Skipped:** `.credentials.json` (credentials), `*.sqlite-shm` sidecars, and
-nested `.git` dirs (e.g. plugin marketplaces).
+**Claude Code** (`~/.claude`, or `$CLAUDE_CONFIG_DIR`): everything, including
+credentials, `CLAUDE.md`, settings, project registries, histories, transcripts,
+skills, rules, plugins, downloads, backups, caches and runtime files.
 
-**Hermes Agent** (`~/.hermes`, or `$HERMES_HOME`): portable state including
-`config.yaml`, `SOUL.md`, memories, skills, sessions, cron definitions and its
-state database. Credentials (`auth.json`, `.env`), pairing data, caches, logs,
-sandbox state, runtime binaries and the installed `hermes-agent` source/venv are
-skipped.
+**Hermes Agent** (`~/.hermes`, or `$HERMES_HOME`): everything, including
+configuration, credentials, pairing data, memories, skills, sessions, cron,
+databases, caches, logs, sandboxes, runtime binaries and installed source/venv.
 
-**Kiro** (`~/.kiro`, or `$KIRO_HOME`): global settings, agents, prompts,
-steering, skills and CLI sessions. Credentials, locks, logs and caches are
-skipped.
+**Kiro** (`~/.kiro`, or `$KIRO_HOME`): everything, including global settings,
+agents, prompts, steering, skills, CLI sessions, credentials, locks, logs and
+caches.
 
-**Google Antigravity** (`~/.gemini`, or `$ANTIGRAVITY_HOME`): global
-`GEMINI.md` rules plus Antigravity artifacts, knowledge, conversations and MCP
-configuration under `~/.gemini/antigravity`. Authentication, installation IDs,
-locks, logs and caches are skipped.
+**Google Antigravity** (`~/.gemini`, or `$ANTIGRAVITY_HOME`): everything under
+the Gemini/Antigravity state root, including global rules, authentication,
+installation IDs, artifacts, knowledge, conversations, MCP configuration,
+temporary files, locks, logs and caches.
 
-**SSH config** (`~/.ssh`): only `config`, `config.d/` and `conf.d/` are synced.
-Private keys, public keys, `known_hosts` and backup directories are never added.
+**VS Code-family AI editors:** Cursor, Windsurf, VS Code, VSCodium and Void each
+sync two roots: the OS-specific application-data directory containing user and
+workspace state, plus the editor's home/extensions directory. Windsurf also
+syncs `~/.codeium/windsurf` for Cascade/MCP agent state. Kiro and Antigravity
+add their IDE application data; Antigravity also adds `~/.antigravity`.
+
+Missing editors are skipped without deleting an older snapshot. They are
+restored automatically when their bundle exists, even if the editor has not yet
+created its local directories.
+
+**SSH** (`~/.ssh`, or `$CONTIX_SSH_HOME`): everything, including configuration,
+private/public keys, `known_hosts`, authorized keys and backup directories.
 
 **Hosts** (`/etc/hosts`, or the Windows equivalent): collected as its own
 bundle. If the destination is not writable, `pull` keeps the local hosts file
@@ -183,15 +198,16 @@ exceeds 5 MiB, contix writes `bundle.tar.gz.part-000`, `part-001`, and so on.
 
 ## Security notes
 
-- **Use a private repository.** Your synced state contains project context,
-  session history and settings.
-- **Credentials are never synced.** `auth.json`, `.credentials.json` and similar
-  machine-locked secrets are explicitly excluded. You re-authenticate each tool
-  on the new machine as usual.
-- **SSH keys are never synced.** Only allowlisted SSH configuration files are
-  collected.
+- **Use only a private, trusted repository.** Credentials, access tokens, SSH
+  private keys, project context, session contents and machine state are
+  intentionally synced.
+- Anyone who can read the sync repository can potentially access your accounts
+  and machines. Contix does not encrypt archive contents beyond Git transport.
 - `contix` uses your existing `git` and its credential setup; it never handles
-  tokens itself.
+  the remote's Git authentication itself.
+- Stop the synced applications before `collect` when possible. Because every
+  file is required, an unreadable or disappearing runtime file fails collection
+  instead of producing an incomplete snapshot.
 
 ---
 
@@ -202,6 +218,9 @@ exceeds 5 MiB, contix writes `bundle.tar.gz.part-000`, `part-001`, and so on.
 - If a target is not installed or has no matching files, its previous remote
   snapshot is retained. If the remote has no bundle for a target, `pull` keeps
   that target's existing local state.
+- A normal `pull` does not overwrite differing local files. It reports every
+  conflict and keeps that target unchanged; `pull --ignore` explicitly accepts
+  overwriting with the synced snapshot.
 
 If GitHub previously rejected an oversized bundle, upgrade and run
 `contix collect` again. Contix rewrites unpublished snapshot history so the old

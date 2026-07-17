@@ -1,9 +1,10 @@
-// Package tool defines syncable agent and machine state: where it lives, which
-// paths are safe and useful to sync, and how to detect a related tool version.
+// Package tool defines syncable agent and machine state roots and how to detect
+// a related tool version.
 package tool
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,17 +19,11 @@ type Tool struct {
 	Name string
 	// Home returns the absolute state directory for this tool on this machine.
 	Home func() string
-	// Include is an optional allowlist rooted at Home. An empty list includes
-	// everything except Exclude. It is used for sensitive roots such as ~/.ssh.
+	// Include is an optional allowlist rooted at Home. Agent and SSH targets leave
+	// it empty to sync everything; hosts uses it to select /etc/hosts, not /etc.
 	Include []string
-	// Exclude lists path patterns that must never be synced. Everything under
-	// Home allowed by Include and not matching Exclude is synced.
-	Exclude []string
 	// Binary is the executable probed with --version. Empty disables probing.
 	Binary string
-	// RejectContent can conservatively reject an otherwise allowed file after
-	// inspecting its content (used to prevent disguised SSH private keys).
-	RejectContent func(path string) bool
 	// Version detects the installed tool version from its state dir. Returns
 	// "" when unknown.
 	Version func(home string) string
@@ -41,19 +36,54 @@ type Tool struct {
 // Registry returns all known tools keyed by name.
 func Registry() map[string]Tool {
 	return map[string]Tool{
-		"antigravity": antigravity(),
-		"claude":      claude(),
-		"codex":       codex(),
-		"hermes":      hermes(),
-		"hosts":       hosts(),
-		"kiro":        kiro(),
-		"ssh":         sshConfig(),
+		"antigravity":            antigravity(),
+		"antigravity-editor":     editor("antigravity-editor", platform.AntigravityIDEHome, "antigravity"),
+		"antigravity-extensions": editor("antigravity-extensions", platform.AntigravityExtensionsHome, ""),
+		"claude":                 claude(),
+		"codex":                  codex(),
+		"cursor":                 editor("cursor", platform.CursorDataHome, "cursor"),
+		"cursor-home":            editor("cursor-home", platform.CursorHome, ""),
+		"hermes":                 hermes(),
+		"hosts":                  hosts(),
+		"kiro":                   kiro(),
+		"kiro-editor":            editor("kiro-editor", platform.KiroIDEHome, "kiro"),
+		"ssh":                    sshConfig(),
+		"vscode":                 editor("vscode", platform.VSCodeDataHome, "code"),
+		"vscode-home":            editor("vscode-home", platform.VSCodeHome, ""),
+		"vscodium":               editor("vscodium", platform.VSCodiumDataHome, "codium"),
+		"vscodium-home":          editor("vscodium-home", platform.VSCodiumHome, ""),
+		"void":                   editor("void", platform.VoidDataHome, "void"),
+		"void-home":              editor("void-home", platform.VoidHome, ""),
+		"windsurf":               editor("windsurf", platform.WindsurfDataHome, "windsurf"),
+		"windsurf-agent":         editor("windsurf-agent", platform.WindsurfAgentHome, ""),
+		"windsurf-home":          editor("windsurf-home", platform.WindsurfHome, ""),
 	}
 }
 
 // Names returns the sorted list of known tool names.
 func Names() []string {
-	return []string{"antigravity", "claude", "codex", "hermes", "hosts", "kiro", "ssh"}
+	return []string{
+		"antigravity", "antigravity-editor", "antigravity-extensions",
+		"claude", "codex", "cursor", "cursor-home", "hermes", "hosts",
+		"kiro", "kiro-editor", "ssh", "vscode", "vscode-home",
+		"vscodium", "vscodium-home", "void", "void-home",
+		"windsurf", "windsurf-agent", "windsurf-home",
+	}
+}
+
+// Group expands a product name to every state root associated with it.
+func Group(name string) ([]string, bool) {
+	groups := map[string][]string{
+		"antigravity": {"antigravity", "antigravity-editor", "antigravity-extensions"},
+		"cursor":      {"cursor", "cursor-home"},
+		"kiro":        {"kiro", "kiro-editor"},
+		"vscode":      {"vscode", "vscode-home"},
+		"vscodium":    {"vscodium", "vscodium-home"},
+		"void":        {"void", "void-home"},
+		"windsurf":    {"windsurf", "windsurf-agent", "windsurf-home"},
+	}
+	items, ok := groups[name]
+	return items, ok
 }
 
 // Lookup returns a tool by name.
@@ -67,23 +97,6 @@ func codex() Tool {
 		Name:   "codex",
 		Home:   platform.CodexHome,
 		Binary: "codex",
-		// Sync everything under the Codex home except the items below.
-		Exclude: []string{
-			// Machine-locked credentials — never sync (security).
-			"auth.json",
-			".credentials.json",
-			// 300MB+ telemetry log that regenerates on its own.
-			"logs_*.sqlite",
-			// SQLite shared-memory sidecar; rebuilt on open, unsafe to copy.
-			"*.sqlite-shm",
-			// Runtime scratch data and locks are short-lived and can disappear
-			// while an archive is being built.
-			"tmp/",
-			".tmp/",
-			"*.lock",
-			// Nested git repos would corrupt the sync repo if embedded.
-			".git",
-		},
 		Version: func(home string) string {
 			// version.json: {"version":"x.y.z", ...}
 			b, err := os.ReadFile(filepath.Join(home, "version.json"))
@@ -106,18 +119,6 @@ func claude() Tool {
 		Name:   "claude",
 		Home:   platform.ClaudeHome,
 		Binary: "claude",
-		// Sync everything under the Claude home except the items below.
-		Exclude: []string{
-			// Machine-locked credentials — never sync (security).
-			".credentials.json",
-			// SQLite shared-memory sidecar; rebuilt on open, unsafe to copy.
-			"*.sqlite-shm",
-			"tmp/",
-			"*.lock",
-			// Nested git repos (e.g. plugin marketplaces) would corrupt the
-			// sync repo if embedded.
-			".git",
-		},
 		Version: func(home string) string {
 			// Claude stores no reliable version file; leave to CLI probing.
 			return ""
@@ -127,36 +128,9 @@ func claude() Tool {
 
 func hermes() Tool {
 	return Tool{
-		Name:   "hermes",
-		Home:   platform.HermesHome,
-		Binary: "hermes",
-		Exclude: []string{
-			// Authentication and provider secrets stay machine-local.
-			"auth.json",
-			"auth.lock",
-			".env",
-			".credentials.json",
-			"pairing/",
-			// The installed source tree, runtimes and generated data are large and
-			// reproducible. User config, SOUL, memories, skills, sessions and cron
-			// definitions remain included.
-			"hermes-agent/",
-			"bin/",
-			"cache/",
-			"logs/",
-			"audio_cache/",
-			"image_cache/",
-			"sandboxes/",
-			"cron/output/",
-			"cron/ticker_heartbeat",
-			"*_cache.json",
-			"*.lock",
-			"*.sqlite-shm",
-			"*.sqlite-wal",
-			"*.db-shm",
-			"*.db-wal",
-			".git",
-		},
+		Name:    "hermes",
+		Home:    platform.HermesHome,
+		Binary:  "hermes",
 		Version: func(home string) string { return "" },
 	}
 }
@@ -166,77 +140,27 @@ func kiro() Tool {
 		Name:   "kiro",
 		Home:   platform.KiroHome,
 		Binary: "kiro-cli",
-		Exclude: []string{
-			"auth.json",
-			"credentials.json",
-			".credentials.json",
-			".env",
-			"*.lock",
-			"tmp/",
-			"logs/",
-			"cache/",
-			".git",
-		},
 	}
 }
 
 func antigravity() Tool {
 	return Tool{
-		Name:    "antigravity",
-		Home:    platform.AntigravityHome,
-		Binary:  "antigravity",
-		Include: []string{"GEMINI.md", "antigravity/"},
-		Exclude: []string{
-			"auth.json",
-			"oauth_creds.json",
-			"credentials.json",
-			".credentials.json",
-			".env",
-			"installation_id",
-			"*.lock",
-			"tmp/",
-			"cache/",
-			"logs/",
-			".git",
-		},
+		Name:   "antigravity",
+		Home:   platform.AntigravityHome,
+		Binary: "antigravity",
 	}
 }
 
 func sshConfig() Tool {
 	return Tool{
-		Name:    "ssh",
-		Home:    platform.SSHHome,
-		Binary:  "ssh",
-		Include: []string{"config", "config.d/", "conf.d/"},
-		Exclude: []string{
-			"id_*",
-			"*.key",
-			"*.pem",
-			"*.p12",
-			"*.pfx",
-			"*.pub",
-			"known_hosts*",
-			"authorized_keys*",
-		},
-		RejectContent: sshPrivateKey,
+		Name:   "ssh",
+		Home:   platform.SSHHome,
+		Binary: "ssh",
 	}
 }
 
-func sshPrivateKey(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return true
-	}
-	defer f.Close()
-	buf := make([]byte, 512)
-	n, err := f.Read(buf)
-	if err != nil && n == 0 {
-		return true
-	}
-	header := string(buf[:n])
-	return strings.Contains(header, "PRIVATE KEY-----") ||
-		strings.Contains(header, "BEGIN SSH2 ENCRYPTED PRIVATE KEY") ||
-		strings.HasPrefix(header, "PuTTY-User-Key-File-")
+func editor(name string, home func() string, binary string) Tool {
+	return Tool{Name: name, Home: home, Binary: binary}
 }
 
 func hosts() Tool {
@@ -249,8 +173,8 @@ func hosts() Tool {
 	}
 }
 
-// IncludedFiles walks the target's home directory and returns allowed regular
-// files that are not excluded. Symlinks are skipped for safety.
+// IncludedFiles walks the target root and returns every regular file and
+// symlink. Hosts is the sole allowlisted target because its root is /etc.
 func (t Tool) IncludedFiles() ([]string, error) {
 	home := t.Home()
 	info, err := os.Stat(home)
@@ -260,7 +184,7 @@ func (t Tool) IncludedFiles() ([]string, error) {
 	var out []string
 	err = filepath.WalkDir(home, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // skip unreadable entries
+			return fmt.Errorf("read state path %s: %w", p, err)
 		}
 		rel, rerr := filepath.Rel(home, p)
 		if rerr != nil {
@@ -274,26 +198,20 @@ func (t Tool) IncludedFiles() ([]string, error) {
 			if len(t.Include) > 0 && !couldContainIncluded(rel, t.Include) {
 				return filepath.SkipDir
 			}
-			// Prune excluded directories entirely.
-			if matchAny(rel, t.Exclude) {
-				return filepath.SkipDir
-			}
 			return nil
 		}
 		if d.Type()&os.ModeSymlink != 0 {
+			out = append(out, rel)
 			return nil
 		}
 		info, ierr := d.Info()
-		if ierr != nil || !info.Mode().IsRegular() {
-			return nil
+		if ierr != nil {
+			return ierr
 		}
-		if matchAny(rel, t.Exclude) {
-			return nil
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("unsupported non-regular state path: %s", p)
 		}
 		if len(t.Include) > 0 && !includeMatchAny(rel, t.Include) {
-			return nil
-		}
-		if t.RejectContent != nil && t.RejectContent(p) {
 			return nil
 		}
 		out = append(out, rel)
@@ -311,8 +229,8 @@ func includeMatchAny(rel string, patterns []string) bool {
 	return false
 }
 
-// includeMatch uses root-relative semantics. Unlike excludes, an allowlisted
-// "config" means only <root>/config, never a nested backup/config file.
+// includeMatch uses root-relative semantics: an allowlisted "hosts" means only
+// <root>/hosts, never a nested path with the same basename.
 func includeMatch(rel, pattern string) bool {
 	rel = filepath.ToSlash(rel)
 	pattern = filepath.ToSlash(pattern)
@@ -339,48 +257,4 @@ func couldContainIncluded(rel string, patterns []string) bool {
 		}
 	}
 	return false
-}
-
-// matchAny reports whether rel matches any of the patterns.
-func matchAny(rel string, patterns []string) bool {
-	for _, p := range patterns {
-		if match(rel, p) {
-			return true
-		}
-	}
-	return false
-}
-
-// match implements contix's pattern semantics:
-//   - "dir/"        directory prefix: matches the dir and everything under it
-//   - "*.ext"       glob on the basename (no slash)
-//   - "name"        segment name: matches if any path segment equals name,
-//     or the path is exactly name / under name/
-//   - "a/b*.c"      full-path glob (contains slash)
-//   - "a/b/c"       exact path or prefix directory
-func match(rel, pat string) bool {
-	rel = filepath.ToSlash(rel)
-	switch {
-	case strings.HasSuffix(pat, "/"):
-		d := strings.TrimSuffix(pat, "/")
-		return rel == d || strings.HasPrefix(rel, d+"/")
-	case strings.Contains(pat, "*") && !strings.Contains(pat, "/"):
-		ok, _ := path.Match(pat, path.Base(rel))
-		return ok
-	case !strings.Contains(pat, "/"):
-		if rel == pat || strings.HasPrefix(rel, pat+"/") {
-			return true
-		}
-		for _, seg := range strings.Split(rel, "/") {
-			if seg == pat {
-				return true
-			}
-		}
-		return false
-	case strings.Contains(pat, "*"):
-		ok, _ := path.Match(pat, rel)
-		return ok
-	default:
-		return rel == pat || strings.HasPrefix(rel, pat+"/")
-	}
 }
