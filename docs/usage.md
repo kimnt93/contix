@@ -51,17 +51,10 @@ unset), it initialises a fresh local repo.
 
 Re-running `init` updates the configuration in place, such as adding a remote.
 
-### `contix status`
-
-Shows configuration, each tool's detected state directory and file count, and
-whether the sync repo has uncommitted snapshots.
-
 ### `contix collect`
 
 ```
---tools <list>     Comma-separated tools to push (default: all)
---days <N>         Only include session transcripts newer than N days (0 = all)
---message <msg>    Commit message (default: "contix sync <time> from <host>")
+--tools <list>     Comma-separated tools to collect (default: all)
 ```
 
 Steps: collect each tool's portable files into `tarball + manifest`, remove any
@@ -69,6 +62,7 @@ legacy working-repository snapshots, then run `git add -A && git commit` locally
 Compressed bundles larger than 50 MiB are split into GitHub-safe parts. If a
 previous snapshot was never accepted by the remote, `collect` replaces/squashes
 that unpublished history so rejected large objects are no longer pushed.
+The commit message, hostname and timestamp are generated automatically.
 
 ### `contix push`
 
@@ -78,29 +72,9 @@ repo contains uncommitted changes.
 
 ### `contix pull`
 
-```
---tools <list>     Comma-separated tools to restore (default: all)
---no-rewrite       Do not rewrite machine paths in restored state
---map OLD=NEW      Extra path mapping (repeatable)
-```
-
 Steps: `git pull` the sync repo, extract each tool bundle into its home dir,
 verify every file against its recorded SHA-256, then rewrite embedded paths for
-this machine.
-
-### `contix list`
-
-Lists tool bundles with file counts, size, source OS, tool version and timestamp.
-
-### `contix verify`
-
-Extracts every tool bundle to a temp directory and checks all files against the
-manifest SHA-256 digests. Confirms the archives are intact and restorable.
-
-### `contix doctor`
-
-Environment diagnostics: git availability, config presence, sync-repo state,
-remote configuration, and detection of each tool's state directory.
+this machine. Pull always restores all three tools and verifies their checksums.
 
 ---
 
@@ -145,9 +119,9 @@ exclude patterns (relative to each tool's home):
 - `a/b/c` — an exact path or a prefix directory
 
 Archives use gzip's maximum compression level. A compressed bundle larger than
-50 MiB is stored as ordered `bundle.tar.gz.part-NNN` files. `pull` and `verify`
-read those parts as one continuous archive; older single-file bundles remain
-compatible.
+50 MiB is stored as ordered `bundle.tar.gz.part-NNN` files. `pull` reads those
+parts as one continuous archive and verifies restored files; older single-file
+bundles remain compatible.
 
 ### Codex (`~/.codex`)
 
@@ -180,12 +154,6 @@ following are excluded:
   `cron/ticker_heartbeat`
 - lock files and SQLite sidecars
 
-> To trim large bundles, use `--days N` so old session transcripts under
-> `sessions/`, `archived_sessions/` and `projects/` are dropped. Everything else
-> is kept regardless of age.
-
----
-
 ## Cross-machine path rewriting
 
 Session and project files often embed absolute paths (e.g.
@@ -198,8 +166,7 @@ directory to the *current* machine's home inside text files (`.json`, `.jsonl`,
 - Claude Code's dash-encoded project directory names
   (`-home-alice-proj` → `-Users-bob-proj`), renaming the directories too
 
-Add extra rules with `--map OLD=NEW` (repeatable), or disable rewriting with
-`--no-rewrite`.
+Path rewriting is automatic during `contix pull`.
 
 ---
 
@@ -246,15 +213,15 @@ contix pull
 make upgrade
 ```
 
-`make install`, `make upgrade`, and `contix version` show the version and short
+`make install`, `make upgrade`, and `contix --version` show the version and short
 release notes. Change [`release/VERSION`](../release/VERSION) and
 [`release/NOTES`](../release/NOTES), then run `make release`; both values are
 embedded into the resulting binaries.
 
-**Only sync Codex, keep bundles small**
+**Only collect Codex**
 
 ```bash
-contix collect --tools codex --days 14
+contix collect --tools codex
 contix push
 ```
 

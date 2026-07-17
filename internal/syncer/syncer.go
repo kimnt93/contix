@@ -45,10 +45,8 @@ func toolDir(cfg config.Config, name string) string {
 	return filepath.Join(cfg.RepoPath, name)
 }
 
-// Push collects a tool's whitelisted state into the repo. When days > 0, session
-// transcripts older than that many days are excluded to keep the bundle small;
-// config, memory and skills are always kept regardless of age.
-func Push(cfg config.Config, t tool.Tool, days int) (PushResult, error) {
+// Push collects a tool's portable state into the sync repository.
+func Push(cfg config.Config, t tool.Tool) (PushResult, error) {
 	res := PushResult{Tool: t.Name}
 	home := t.Home()
 	if fi, err := os.Stat(home); err != nil || !fi.IsDir() {
@@ -59,9 +57,6 @@ func Push(cfg config.Config, t tool.Tool, days int) (PushResult, error) {
 	rels, err := t.IncludedFiles()
 	if err != nil {
 		return res, err
-	}
-	if days > 0 {
-		rels = filterByAge(home, rels, days)
 	}
 	if len(rels) == 0 {
 		res.Skipped = "no matching files"

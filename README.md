@@ -58,7 +58,7 @@ make upgrade      # later: fast-forward this checkout and reinstall latest
 Both commands print the installed version and its short release notes. Release
 metadata is kept in two easy-to-edit files:
 
-- [`release/VERSION`](release/VERSION) — one version string, such as `0.3.0`
+- [`release/VERSION`](release/VERSION) — one version string, such as `0.4.0`
 - [`release/NOTES`](release/NOTES) — a short install/upgrade message
 
 The files are embedded into the binary during the build, so they are not needed
@@ -118,22 +118,13 @@ Your Codex/Claude/Hermes memory and settings are back.
 | Command | What it does |
 |---|---|
 | `contix init` | Configure the sync repo. Clones the remote if it already has data. |
-| `contix status` | Show config and what each tool would sync. |
 | `contix collect` | Collect AI state and commit it locally. |
 | `contix push` | Upload the collected state to the configured remote. |
 | `contix pull` | Pull from the remote and restore AI state onto this machine. |
-| `contix list` | List what is currently stored in the sync repo. |
-| `contix verify` | Extract and checksum every bundle to confirm integrity. |
-| `contix doctor` | Diagnose environment and configuration. |
-| `contix version` | Print the version. |
 
-Common flags:
+Optional collection filter:
 
-- `contix collect --days 30` — only include session transcripts from the last 30
-  days (memory, rules and skills are always kept). Keeps bundles small.
 - `contix collect --tools codex` — sync only one tool.
-- `contix collect --message "before reinstall"` — custom commit message.
-- `contix pull --map /old/home=/new/home` — extra path rewrite rule.
 
 See [docs/usage.md](docs/usage.md) for the full reference and internals.
 
@@ -164,7 +155,7 @@ skipped.
 
 Each tool is stored as one recursive `tar.gz` stream. When its compressed size
 exceeds 50 MiB, contix writes `bundle.tar.gz.part-000`, `part-001`, and so on.
-`pull` and `verify` reassemble the parts automatically.
+`pull` reassembles and verifies the parts automatically.
 
 ---
 

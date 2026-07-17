@@ -27,15 +27,9 @@ USAGE
 
 COMMANDS
   init      Configure the sync repo (clones the remote on a new machine)
-  status    Show configuration and what would be synced
   collect   Collect AI state and commit it locally
   push      Upload the collected state to the remote
   pull      Pull from the remote and restore AI state onto this machine
-  list      List what is currently stored in the sync repo
-  verify    Check archive integrity of everything in the sync repo
-  doctor    Diagnose the environment and configuration
-  version   Print the contix version
-  help      Show this help
 
 Run "contix <command> -h" for command-specific flags.
 
@@ -61,27 +55,19 @@ func Run(args []string) int {
 	switch cmd {
 	case "init":
 		return cmdInit(rest)
-	case "status":
-		return cmdStatus(rest)
 	case "collect":
 		return cmdCollect(rest)
 	case "push":
 		return cmdPush(rest)
 	case "pull":
 		return cmdPull(rest)
-	case "list":
-		return cmdList(rest)
-	case "verify":
-		return cmdVerify(rest)
-	case "doctor":
-		return cmdDoctor(rest)
-	case "version", "--version", "-v":
+	case "--version", "-v":
 		fmt.Printf("contix %s\n", Version)
 		if notes := releaseinfo.Notes(); notes != "" {
 			fmt.Printf("notes: %s\n", notes)
 		}
 		return 0
-	case "help", "-h", "--help":
+	case "-h", "--help":
 		fmt.Print(usage)
 		return 0
 	default:
@@ -220,92 +206,6 @@ func writeRepoReadme(dir string) {
 			"This repository is managed by [contix](https://github.com/). It stores the\n"+
 			"latest snapshot of Codex / Claude Code / Hermes state.\n\n"+
 			"Do not edit by hand. Use `contix collect`, `contix push` and `contix pull`.\n"), 0o644)
-}
-
-func cmdStatus(args []string) int {
-	cfg, ok := mustConfig()
-	if !ok {
-		return 1
-	}
-	fmt.Printf("contix %s\n\n", Version)
-	fmt.Printf("sync repo : %s\n", cfg.RepoPath)
-	fmt.Printf("remote    : %s\n", orNone(cfg.Remote))
-	fmt.Printf("branch    : %s\n", cfg.Branch)
-
-	fmt.Println("AI tools:")
-	names := tool.Names()
-	for _, name := range names {
-		t, _ := tool.Lookup(name)
-		home := t.Home()
-		if fi, err := os.Stat(home); err != nil || !fi.IsDir() {
-			fmt.Printf("  %-8s not found (%s)\n", name, home)
-			continue
-		}
-		files, _ := t.IncludedFiles()
-		fmt.Printf("  %-8s %d files to sync (%s)\n", name, len(files), home)
-	}
-
-	// Sync repo git status.
-	r := gitutil.Repo{Dir: cfg.RepoPath}
-	if r.IsRepo() {
-		if s, _ := r.Status(); strings.TrimSpace(s) != "" {
-			fmt.Println("\nSync repo has uncommitted changes (run 'contix collect').")
-		} else {
-			fmt.Println("\nSync repo is clean.")
-		}
-	}
-	return 0
-}
-
-func cmdDoctor(args []string) int {
-	fmt.Printf("contix %s\n\n", Version)
-	ok := true
-
-	// git
-	if gitutil.Available() {
-		fmt.Println("[ok]   git is installed")
-	} else {
-		fmt.Println("[FAIL] git not found on PATH")
-		ok = false
-	}
-
-	// config
-	if config.Exists() {
-		fmt.Printf("[ok]   config present (%s)\n", config.Path())
-	} else {
-		fmt.Println("[warn] not configured — run 'contix init'")
-	}
-
-	cfg, err := config.Load()
-	if err == nil {
-		r := gitutil.Repo{Dir: cfg.RepoPath}
-		if r.IsRepo() {
-			fmt.Printf("[ok]   sync repo initialised (%s)\n", cfg.RepoPath)
-		} else {
-			fmt.Printf("[warn] sync repo not initialised (%s)\n", cfg.RepoPath)
-		}
-		if cfg.Remote != "" {
-			fmt.Printf("[ok]   remote configured (%s)\n", cfg.Remote)
-		} else {
-			fmt.Println("[warn] no git remote configured")
-		}
-	}
-
-	// tools
-	for _, name := range tool.Names() {
-		t, _ := tool.Lookup(name)
-		home := t.Home()
-		if fi, err := os.Stat(home); err == nil && fi.IsDir() {
-			fmt.Printf("[ok]   %s state found (%s)\n", name, home)
-		} else {
-			fmt.Printf("[warn] %s state not found (%s)\n", name, home)
-		}
-	}
-
-	if ok {
-		return 0
-	}
-	return 1
 }
 
 func orNone(s string) string {

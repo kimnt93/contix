@@ -66,7 +66,7 @@ install:
 	@cp "$(PREBUILT)" "$(BINDIR)/$(BINARY)$(EXT)"
 	@chmod +x "$(BINDIR)/$(BINARY)$(EXT)" 2>/dev/null || true
 	@echo "installed $(PREBUILT) -> $(BINDIR)/$(BINARY)$(EXT)"
-	@"$(BINDIR)/$(BINARY)$(EXT)" version
+	@"$(BINDIR)/$(BINARY)$(EXT)" --version
 	@case ":$(PATH):" in *":$(BINDIR):"*) ;; \
 	  *) echo "note: $(BINDIR) is not on your PATH; add it to use 'contix'." ;; esac
 

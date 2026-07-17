@@ -7,34 +7,18 @@ import (
 	"path/filepath"
 	"time"
 
-	"contix/internal/archive"
-	"contix/internal/config"
 	"contix/internal/gitutil"
-	"contix/internal/pathrewrite"
 	"contix/internal/syncer"
-	"contix/internal/tool"
 )
-
-// mapList collects repeatable --map OLD=NEW flags.
-type mapList []pathrewrite.Mapping
-
-func (m *mapList) String() string { return fmt.Sprintf("%v", []pathrewrite.Mapping(*m)) }
-func (m *mapList) Set(v string) error {
-	mp, ok := pathrewrite.ParseMapping(v)
-	if !ok {
-		return fmt.Errorf("invalid mapping %q (want OLD=NEW)", v)
-	}
-	*m = append(*m, mp)
-	return nil
-}
 
 func cmdCollect(args []string) int {
 	fs := flag.NewFlagSet("collect", flag.ContinueOnError)
 	tools := fs.String("tools", "", "comma-separated tools to collect (default: all)")
-	days := fs.Int("days", 0, "only include session transcripts newer than N days (0 = all)")
-	message := fs.String("message", "", "commit message (default: auto)")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if fs.NArg() != 0 {
+		return fail(fmt.Errorf("collect does not accept positional arguments"))
 	}
 	cfg, ok := mustConfig()
 	if !ok {
@@ -58,7 +42,7 @@ func cmdCollect(args []string) int {
 
 	fmt.Println("Collecting AI tool state:")
 	for _, t := range tls {
-		res, err := syncer.Push(cfg, t, *days)
+		res, err := syncer.Push(cfg, t)
 		if err != nil {
 			return fail(fmt.Errorf("push %s: %w", t.Name, err))
 		}
@@ -75,11 +59,8 @@ func cmdCollect(args []string) int {
 
 	// Commit the collected snapshot locally.
 	r := gitutil.Repo{Dir: cfg.RepoPath}
-	msg := *message
-	if msg == "" {
-		host, _ := os.Hostname()
-		msg = fmt.Sprintf("contix sync %s from %s", time.Now().Format("2006-01-02 15:04"), host)
-	}
+	host, _ := os.Hostname()
+	msg := fmt.Sprintf("contix sync %s from %s", time.Now().Format("2006-01-02 15:04"), host)
 	committed, err := r.CommitSnapshot(cfg.Branch, msg)
 	if err != nil {
 		return fail(err)
@@ -137,12 +118,11 @@ func cmdPush(args []string) int {
 
 func cmdPull(args []string) int {
 	fs := flag.NewFlagSet("pull", flag.ContinueOnError)
-	tools := fs.String("tools", "", "comma-separated tools to restore (default: all)")
-	noRewrite := fs.Bool("no-rewrite", false, "do not rewrite machine paths in restored state")
-	var maps mapList
-	fs.Var(&maps, "map", "extra path mapping OLD=NEW (repeatable)")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if fs.NArg() != 0 {
+		return fail(fmt.Errorf("pull does not accept positional arguments"))
 	}
 	cfg, ok := mustConfig()
 	if !ok {
@@ -161,14 +141,14 @@ func cmdPull(args []string) int {
 		}
 	}
 
-	tls, err := parseTools(*tools)
+	tls, err := parseTools("")
 	if err != nil {
 		return fail(err)
 	}
 
 	fmt.Println("\nRestoring AI tool state:")
 	for _, t := range tls {
-		res, err := syncer.Pull(cfg, t, maps, !*noRewrite)
+		res, err := syncer.Pull(cfg, t, nil, true)
 		if err != nil {
 			return fail(fmt.Errorf("pull %s: %w", t.Name, err))
 		}
@@ -195,102 +175,6 @@ func cmdPull(args []string) int {
 
 	fmt.Println("\nDone. Your AI agents should resume where you left off.")
 	return 0
-}
-
-func cmdList(args []string) int {
-	cfg, ok := mustConfig()
-	if !ok {
-		return 1
-	}
-	fmt.Printf("Sync repo: %s\n\n", cfg.RepoPath)
-
-	fmt.Println("AI tool bundles:")
-	found := false
-	for _, name := range toolNamesInRepo(cfg) {
-		mpath := filepath.Join(cfg.RepoPath, name, archive.ManifestName)
-		m, err := archive.ReadManifest(mpath)
-		if err != nil {
-			continue
-		}
-		found = true
-		var total int64
-		for _, fe := range m.Files {
-			total += fe.Size
-		}
-		fmt.Printf("  %-8s %d files, %s, %s%s, from %s\n",
-			name, len(m.Files), humanBytes(total),
-			m.SourceOS, versionSuffix(m.ToolVersion), m.CreatedAt.Local().Format("2006-01-02 15:04"))
-	}
-	if !found {
-		fmt.Println("  (none)")
-	}
-
-	return 0
-}
-
-func cmdVerify(args []string) int {
-	cfg, ok := mustConfig()
-	if !ok {
-		return 1
-	}
-	tmp, err := os.MkdirTemp("", "contix-verify-")
-	if err != nil {
-		return fail(err)
-	}
-	defer os.RemoveAll(tmp)
-
-	problems := 0
-	fmt.Println("Verifying AI tool bundles:")
-	any := false
-	for _, name := range toolNamesInRepo(cfg) {
-		dir := filepath.Join(cfg.RepoPath, name)
-		mpath := filepath.Join(dir, archive.ManifestName)
-		bpath := filepath.Join(dir, archive.BundleName)
-		m, err := archive.ReadManifest(mpath)
-		if err != nil {
-			continue
-		}
-		any = true
-		dest := filepath.Join(tmp, name)
-		if _, err := archive.Extract(bpath, dest); err != nil {
-			fmt.Printf("  %-8s FAIL: extract: %v\n", name, err)
-			problems++
-			continue
-		}
-		mism, err := archive.Verify(dest, m)
-		if err != nil {
-			fmt.Printf("  %-8s FAIL: %v\n", name, err)
-			problems++
-			continue
-		}
-		if len(mism) == 0 {
-			fmt.Printf("  %-8s ok (%d files)\n", name, len(m.Files))
-		} else {
-			fmt.Printf("  %-8s %d mismatch(es)\n", name, len(mism))
-			problems += len(mism)
-		}
-	}
-	if !any {
-		fmt.Println("  (none)")
-	}
-
-	if problems == 0 {
-		fmt.Println("\nAll bundles verified.")
-		return 0
-	}
-	fmt.Printf("\n%d problem(s) found.\n", problems)
-	return 1
-}
-
-// toolNamesInRepo returns the tool names that have a directory in the sync repo.
-func toolNamesInRepo(cfg config.Config) []string {
-	var out []string
-	for _, name := range tool.Names() {
-		if _, err := os.Stat(filepath.Join(cfg.RepoPath, name, archive.ManifestName)); err == nil {
-			out = append(out, name)
-		}
-	}
-	return out
 }
 
 func versionSuffix(v string) string {

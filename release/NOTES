@@ -1,1 +1,1 @@
-Splits large compressed Claude Code, Codex and Hermes bundles for GitHub-compatible pushes.
+Provides only init, collect, push and pull; collect auto-commits and splits large bundles.
