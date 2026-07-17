@@ -130,6 +130,13 @@ spinner, while Git uploads and downloads stream their native percentage output.
 Optional collection filter:
 
 - `contix collect --tools codex,kiro,ssh` — collect selected targets only.
+- `contix collect --force-close` — stop running synced applications before
+  collecting all targets.
+- `contix collect --tools codex --force-close` — stop and collect only Codex.
+
+`--force-close` may terminate active sessions and discard unsaved editor work,
+so it is never enabled by default. Applications are asked to exit first and are
+forcibly terminated after two seconds if they remain running.
 
 Editor names are groups. For example, `contix collect --tools cursor` collects
 both Cursor's OS-specific application data and its complete `~/.cursor` home.
@@ -205,9 +212,10 @@ exceeds 5 MiB, contix writes `bundle.tar.gz.part-000`, `part-001`, and so on.
   and machines. Contix does not encrypt archive contents beyond Git transport.
 - `contix` uses your existing `git` and its credential setup; it never handles
   the remote's Git authentication itself.
-- Stop the synced applications before `collect` when possible. Because every
-  file is required, an unreadable or disappearing runtime file fails collection
-  instead of producing an incomplete snapshot.
+- Stop synced applications before `collect` when possible, or explicitly use
+  `contix collect --force-close`. Files that disappear during collection are
+  omitted because they no longer exist; permission and other read errors remain
+  fatal.
 
 ---
 

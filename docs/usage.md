@@ -57,6 +57,7 @@ Re-running `init` updates the configuration in place, such as adding a remote.
 
 ```
 --tools <list>     Comma-separated targets to collect (default: all)
+--force-close      Close selected tools before collecting their state
 ```
 
 Steps: collect each tool's portable files into `tarball + manifest`, remove any
@@ -67,6 +68,16 @@ that unpublished history so rejected large objects are no longer pushed.
 The commit message, hostname and timestamp are generated automatically.
 When a target is missing or has no matching files, any previous bundle already
 in the sync repo is kept.
+
+`--force-close` requests a normal process termination, waits up to two seconds,
+then forcibly terminates any matching process that remains. With `--tools`, only
+those selected products are closed. Without `--tools`, all known synced
+applications are closed. This can terminate active sessions and discard unsaved
+editor work, so the option is never implicit.
+
+Temporary paths that disappear between discovery and compression are omitted:
+there are no remaining bytes to archive. Other failures, including permission
+errors and unreadable existing files, still stop the collection.
 
 ### `contix push`
 
@@ -283,6 +294,12 @@ embedded into the resulting binaries.
 ```bash
 contix collect --tools codex
 contix push
+```
+
+To stop Codex before collecting its state:
+
+```bash
+contix collect --tools codex --force-close
 ```
 
 Multiple targets can be selected together:

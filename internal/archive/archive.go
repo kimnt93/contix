@@ -44,11 +44,20 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 		abs := filepath.Join(srcRoot, filepath.FromSlash(rel))
 		info, err := os.Lstat(abs)
 		if err != nil {
+			// Active applications continuously create and remove locks and temp
+			// files. A discovered path that is already gone has no bytes left to
+			// sync; every path that still exists remains included.
+			if os.IsNotExist(err) {
+				continue
+			}
 			return m, fmt.Errorf("inspect %s: %w", rel, err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, err := os.Readlink(abs)
 			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
 				return m, fmt.Errorf("read symlink %s: %w", rel, err)
 			}
 			if err := writeSymlink(tw, rel, target, info); err != nil {
@@ -68,6 +77,9 @@ func Create(srcRoot string, rels []string, bundlePath string, m Manifest) (Manif
 		}
 		entry, staged, err := stageFile(abs)
 		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
 			return m, fmt.Errorf("stage %s: %w", rel, err)
 		}
 		if staged == nil {

@@ -12,3 +12,5 @@
 - [x] Support contix pull --ignore for explicit conflict overwrite
 - [x] Compress once and split large archives into 5 MiB Git-safe parts
 - [x] Show live activity and Git transfer progress
+- [x] Support collect --force-close to stop selected tools before snapshotting
+- [x] Tolerate temporary files that disappear while active state is compressed

@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"contix/internal/gitutil"
+	"contix/internal/procstop"
 	"contix/internal/syncer"
 )
 
 func cmdCollect(args []string) int {
 	fs := flag.NewFlagSet("collect", flag.ContinueOnError)
 	tools := fs.String("tools", "", "comma-separated targets to collect (default: all)")
+	forceClose := fs.Bool("force-close", false, "close selected tools before collecting their state")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -41,6 +43,24 @@ func cmdCollect(args []string) int {
 	tls, err := parseTools(*tools)
 	if err != nil {
 		return fail(err)
+	}
+	if *forceClose {
+		var processes []string
+		for _, t := range tls {
+			processes = append(processes, t.Processes...)
+		}
+		fmt.Println("Closing selected applications before collection...")
+		stopped, err := procstop.Close(processes)
+		if err != nil {
+			return fail(err)
+		}
+		if len(stopped) == 0 {
+			fmt.Println("  no matching processes were running")
+		} else {
+			for _, name := range stopped {
+				fmt.Printf("  stopped %s\n", name)
+			}
+		}
 	}
 
 	fmt.Println("Collecting state:")

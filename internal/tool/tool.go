@@ -24,6 +24,10 @@ type Tool struct {
 	Include []string
 	// Binary is the executable probed with --version. Empty disables probing.
 	Binary string
+	// Processes lists executable names stopped by collect --force-close. It is
+	// separate from Binary because some products have several state roots or
+	// helper processes.
+	Processes []string
 	// Version detects the installed tool version from its state dir. Returns
 	// "" when unknown.
 	Version func(home string) string
@@ -37,26 +41,26 @@ type Tool struct {
 func Registry() map[string]Tool {
 	return map[string]Tool{
 		"antigravity":            antigravity(),
-		"antigravity-editor":     editor("antigravity-editor", platform.AntigravityIDEHome, "antigravity"),
-		"antigravity-extensions": editor("antigravity-extensions", platform.AntigravityExtensionsHome, ""),
+		"antigravity-editor":     editor("antigravity-editor", platform.AntigravityIDEHome, "antigravity", "antigravity"),
+		"antigravity-extensions": editor("antigravity-extensions", platform.AntigravityExtensionsHome, "", "antigravity"),
 		"claude":                 claude(),
 		"codex":                  codex(),
-		"cursor":                 editor("cursor", platform.CursorDataHome, "cursor"),
-		"cursor-home":            editor("cursor-home", platform.CursorHome, ""),
+		"cursor":                 editor("cursor", platform.CursorDataHome, "cursor", "cursor"),
+		"cursor-home":            editor("cursor-home", platform.CursorHome, "", "cursor"),
 		"hermes":                 hermes(),
 		"hosts":                  hosts(),
 		"kiro":                   kiro(),
-		"kiro-editor":            editor("kiro-editor", platform.KiroIDEHome, "kiro"),
+		"kiro-editor":            editor("kiro-editor", platform.KiroIDEHome, "kiro", "kiro"),
 		"ssh":                    sshConfig(),
-		"vscode":                 editor("vscode", platform.VSCodeDataHome, "code"),
-		"vscode-home":            editor("vscode-home", platform.VSCodeHome, ""),
-		"vscodium":               editor("vscodium", platform.VSCodiumDataHome, "codium"),
-		"vscodium-home":          editor("vscodium-home", platform.VSCodiumHome, ""),
-		"void":                   editor("void", platform.VoidDataHome, "void"),
-		"void-home":              editor("void-home", platform.VoidHome, ""),
-		"windsurf":               editor("windsurf", platform.WindsurfDataHome, "windsurf"),
-		"windsurf-agent":         editor("windsurf-agent", platform.WindsurfAgentHome, ""),
-		"windsurf-home":          editor("windsurf-home", platform.WindsurfHome, ""),
+		"vscode":                 editor("vscode", platform.VSCodeDataHome, "code", "code"),
+		"vscode-home":            editor("vscode-home", platform.VSCodeHome, "", "code"),
+		"vscodium":               editor("vscodium", platform.VSCodiumDataHome, "codium", "codium", "vscodium"),
+		"vscodium-home":          editor("vscodium-home", platform.VSCodiumHome, "", "codium", "vscodium"),
+		"void":                   editor("void", platform.VoidDataHome, "void", "void"),
+		"void-home":              editor("void-home", platform.VoidHome, "", "void"),
+		"windsurf":               editor("windsurf", platform.WindsurfDataHome, "windsurf", "windsurf"),
+		"windsurf-agent":         editor("windsurf-agent", platform.WindsurfAgentHome, "", "windsurf"),
+		"windsurf-home":          editor("windsurf-home", platform.WindsurfHome, "", "windsurf"),
 	}
 }
 
@@ -94,9 +98,10 @@ func Lookup(name string) (Tool, bool) {
 
 func codex() Tool {
 	return Tool{
-		Name:   "codex",
-		Home:   platform.CodexHome,
-		Binary: "codex",
+		Name:      "codex",
+		Home:      platform.CodexHome,
+		Binary:    "codex",
+		Processes: []string{"codex", "codex-code-mode"},
 		Version: func(home string) string {
 			// version.json: {"version":"x.y.z", ...}
 			b, err := os.ReadFile(filepath.Join(home, "version.json"))
@@ -116,9 +121,10 @@ func codex() Tool {
 
 func claude() Tool {
 	return Tool{
-		Name:   "claude",
-		Home:   platform.ClaudeHome,
-		Binary: "claude",
+		Name:      "claude",
+		Home:      platform.ClaudeHome,
+		Binary:    "claude",
+		Processes: []string{"claude"},
 		Version: func(home string) string {
 			// Claude stores no reliable version file; leave to CLI probing.
 			return ""
@@ -128,26 +134,29 @@ func claude() Tool {
 
 func hermes() Tool {
 	return Tool{
-		Name:    "hermes",
-		Home:    platform.HermesHome,
-		Binary:  "hermes",
-		Version: func(home string) string { return "" },
+		Name:      "hermes",
+		Home:      platform.HermesHome,
+		Binary:    "hermes",
+		Processes: []string{"hermes", "hermes-agent"},
+		Version:   func(home string) string { return "" },
 	}
 }
 
 func kiro() Tool {
 	return Tool{
-		Name:   "kiro",
-		Home:   platform.KiroHome,
-		Binary: "kiro-cli",
+		Name:      "kiro",
+		Home:      platform.KiroHome,
+		Binary:    "kiro-cli",
+		Processes: []string{"kiro-cli"},
 	}
 }
 
 func antigravity() Tool {
 	return Tool{
-		Name:   "antigravity",
-		Home:   platform.AntigravityHome,
-		Binary: "antigravity",
+		Name:      "antigravity",
+		Home:      platform.AntigravityHome,
+		Binary:    "antigravity",
+		Processes: []string{"antigravity"},
 	}
 }
 
@@ -159,8 +168,8 @@ func sshConfig() Tool {
 	}
 }
 
-func editor(name string, home func() string, binary string) Tool {
-	return Tool{Name: name, Home: home, Binary: binary}
+func editor(name string, home func() string, binary string, processes ...string) Tool {
+	return Tool{Name: name, Home: home, Binary: binary, Processes: processes}
 }
 
 func hosts() Tool {
@@ -184,6 +193,9 @@ func (t Tool) IncludedFiles() ([]string, error) {
 	var out []string
 	err = filepath.WalkDir(home, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return fmt.Errorf("read state path %s: %w", p, err)
 		}
 		rel, rerr := filepath.Rel(home, p)
