@@ -67,9 +67,8 @@ force-kills matching processes still running.
 
 Requires a clean sync repository produced by `collect`. Contix aborts stale Git
 merge/rebase state, fetches the current branch and publishes the local snapshot
-with `--force-with-lease`. The pushing machine wins without attempting to merge
-binary archives; a truly concurrent update makes the lease fail safely, and
-rerunning `push` retries against the newly observed remote state.
+with `--force`. The pushing machine always overwrites the remote branch without
+attempting to merge binary archives.
 
 ### `contix pull`
 

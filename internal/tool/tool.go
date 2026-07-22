@@ -23,6 +23,9 @@ type Tool struct {
 	// Include is an optional allowlist rooted at Home. An empty list syncs the
 	// complete coding-agent state root.
 	Include []string
+	// Exclude omits runtime data that is not part of portable agent state.
+	// Patterns use the same root-relative semantics as Include.
+	Exclude []string
 	// Binary is the executable probed with --version. Empty disables probing.
 	Binary string
 	// Processes lists executable names stopped by collect --force-close. It is
@@ -99,8 +102,12 @@ func Lookup(name string) (Tool, bool) {
 
 func codex() Tool {
 	return Tool{
-		Name:      "codex",
-		Home:      platform.CodexHome,
+		Name: "codex",
+		Home: platform.CodexHome,
+		Exclude: []string{
+			"packages", "cache", "db-backups", "ipc", "tmp",
+			"logs_2.sqlite", "*.sqlite-wal", "*.sqlite-shm",
+		},
 		Binary:    "codex",
 		Processes: []string{"codex", "codex-code-mode"},
 		Version: func(home string) string {
@@ -146,6 +153,9 @@ func antigravity() Tool {
 	return Tool{
 		Name: "antigravity",
 		Home: platform.AntigravityHome,
+		Exclude: []string{
+			"antigravity-browser-profile", "antigravity-backup", "antigravity-ide",
+		},
 		// Antigravity's executable is the desktop launcher. Invoking it with
 		// --version opens the IDE, so collection must not probe it as a CLI.
 		Processes: []string{"antigravity"},
@@ -263,6 +273,12 @@ func (t Tool) IncludedFiles() ([]string, error) {
 		if rel == "." {
 			return nil
 		}
+		if excludeMatchAny(rel, t.Exclude) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if d.IsDir() {
 			if len(t.Include) > 0 && !couldContainIncluded(rel, t.Include) {
 				return filepath.SkipDir
@@ -287,6 +303,15 @@ func (t Tool) IncludedFiles() ([]string, error) {
 		return nil
 	})
 	return out, err
+}
+
+func excludeMatchAny(rel string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if includeMatch(rel, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 func includeMatchAny(rel string, patterns []string) bool {

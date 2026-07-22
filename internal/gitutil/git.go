@@ -253,9 +253,8 @@ func (r Repo) Push(branch string) error {
 }
 
 // PushProgress publishes the local snapshot without merging binary archives.
-// When the branch exists, fetch first and use force-with-lease so this snapshot
-// replaces the observed remote state but refuses to overwrite a concurrent
-// update that arrived after the fetch.
+// The local snapshot always wins: the configured branch is force-updated on the
+// remote after the latest remote state is fetched.
 func (r Repo) PushProgress(branch string, out io.Writer) error {
 	if !r.HasRemote() {
 		return fmt.Errorf("no git remote configured")
@@ -266,8 +265,7 @@ func (r Repo) PushProgress(branch string, out io.Writer) error {
 	if err := r.fetchBranchProgress(branch, out); err != nil {
 		return err
 	}
-	lease := "--force-with-lease=refs/heads/" + branch
-	return r.runStreaming(out, "push", "--progress", lease, "-u", "origin", branch)
+	return r.runStreaming(out, "push", "--progress", "--force", "-u", "origin", branch)
 }
 
 // Status returns short porcelain status lines.

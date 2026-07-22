@@ -32,6 +32,7 @@ func TestAgentTargetIncludesAllRegularFilesAndSymlinks(t *testing.T) {
 
 	target := codex()
 	target.Home = func() string { return root }
+	target.Exclude = nil
 	got, err := target.IncludedFiles()
 	if err != nil {
 		t.Fatal(err)
@@ -111,6 +112,28 @@ func TestIncludedFilesSkipsRuntimeSockets(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"settings.json"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("included paths = %v, want %v", got, want)
+	}
+}
+
+func TestIncludedFilesHonorsExcludes(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"settings.json", "cache/model.bin", "sessions/one.jsonl"} {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := Tool{Name: "exclude-test", Home: func() string { return root }, Exclude: []string{"cache"}}
+	got, err := target.IncludedFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"sessions/one.jsonl", "settings.json"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("included paths = %v, want %v", got, want)
 	}
