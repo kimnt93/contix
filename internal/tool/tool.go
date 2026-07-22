@@ -144,9 +144,10 @@ func kiro() Tool {
 
 func antigravity() Tool {
 	return Tool{
-		Name:      "antigravity",
-		Home:      platform.AntigravityHome,
-		Binary:    "antigravity",
+		Name: "antigravity",
+		Home: platform.AntigravityHome,
+		// Antigravity's executable is the desktop launcher. Invoking it with
+		// --version opens the IDE, so collection must not probe it as a CLI.
 		Processes: []string{"antigravity"},
 	}
 }

@@ -86,3 +86,10 @@ func TestRegistryContainsOnlyCodingAgents(t *testing.T) {
 		}
 	}
 }
+
+func TestAntigravityDoesNotProbeDesktopLauncher(t *testing.T) {
+	target := antigravity()
+	if target.Binary != "" {
+		t.Fatalf("Antigravity binary probe = %q; probing the desktop launcher opens the IDE", target.Binary)
+	}
+}
