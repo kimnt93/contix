@@ -63,8 +63,10 @@ install:
 	  exit 1; \
 	fi
 	@mkdir -p "$(BINDIR)"
-	@cp "$(PREBUILT)" "$(BINDIR)/$(BINARY)$(EXT)"
-	@chmod +x "$(BINDIR)/$(BINARY)$(EXT)" 2>/dev/null || true
+	@tmp="$(BINDIR)/.$(BINARY)$(EXT).tmp.$$$$"; \
+		cp "$(PREBUILT)" "$$tmp" && \
+		chmod +x "$$tmp" 2>/dev/null && \
+		mv -f "$$tmp" "$(BINDIR)/$(BINARY)$(EXT)"
 	@echo "installed $(PREBUILT) -> $(BINDIR)/$(BINARY)$(EXT)"
 	@"$(BINDIR)/$(BINARY)$(EXT)" --version
 	@case ":$(PATH):" in *":$(BINDIR):"*) ;; \

@@ -239,7 +239,8 @@ func gooseConfig() Tool {
 }
 
 // IncludedFiles walks the target root and returns its selected regular files
-// and symlinks.
+// and symlinks. Runtime sockets, pipes and device entries are ignored because
+// they have no portable file contents to synchronize.
 func (t Tool) IncludedFiles() ([]string, error) {
 	home := t.Home()
 	info, err := os.Stat(home)
@@ -277,7 +278,7 @@ func (t Tool) IncludedFiles() ([]string, error) {
 			return ierr
 		}
 		if !info.Mode().IsRegular() {
-			return fmt.Errorf("unsupported non-regular state path: %s", p)
+			return nil
 		}
 		if len(t.Include) > 0 && !includeMatchAny(rel, t.Include) {
 			return nil

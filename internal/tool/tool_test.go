@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -91,5 +92,26 @@ func TestAntigravityDoesNotProbeDesktopLauncher(t *testing.T) {
 	target := antigravity()
 	if target.Binary != "" {
 		t.Fatalf("Antigravity binary probe = %q; probing the desktop launcher opens the IDE", target.Binary)
+	}
+}
+
+func TestIncludedFilesSkipsRuntimeSockets(t *testing.T) {
+	root := t.TempDir()
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(root, "runtime.sock"), Net: "unix"})
+	if err != nil {
+		t.Skipf("Unix sockets unavailable: %v", err)
+	}
+	defer listener.Close()
+	if err := os.WriteFile(filepath.Join(root, "settings.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	target := Tool{Name: "socket-test", Home: func() string { return root }}
+	got, err := target.IncludedFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"settings.json"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("included paths = %v, want %v", got, want)
 	}
 }
